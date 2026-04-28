@@ -1,0 +1,385 @@
+openapi: 3.1.0
+info:
+  title: J-Board API
+  version: 0.2.0
+  description: Current J-Board Route Handlers. Node provisioning uses 3x-ui; probe API only accepts latency and trace uploads.
+servers:
+  - url: https://your-domain.com
+security: []
+tags:
+  - name: Auth
+  - name: Public
+  - name: Payment
+  - name: Admin
+  - name: Probe
+  - name: Subscription
+paths:
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: Registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          description: Invalid request
+  /api/public/app-info:
+    get:
+      tags: [Public]
+      summary: Get public app settings
+      responses:
+        '200':
+          description: App info
+  /api/latency:
+    get:
+      tags: [Public]
+      summary: Get latest carrier latency for a node
+      parameters:
+        - $ref: '#/components/parameters/NodeId'
+      responses:
+        '200':
+          description: Latest latencies
+  /api/latency/history:
+    get:
+      tags: [Public]
+      summary: Get latency history for a node and carrier
+      parameters:
+        - $ref: '#/components/parameters/NodeId'
+        - name: carrier
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/Carrier'
+        - name: range
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [1d, 7d, 30d]
+      responses:
+        '200':
+          description: Latency history
+  /api/traces:
+    get:
+      tags: [Public]
+      summary: Get latest route traces for a node
+      parameters:
+        - $ref: '#/components/parameters/NodeId'
+      responses:
+        '200':
+          description: Route traces
+  /api/payment/providers:
+    get:
+      tags: [Payment]
+      summary: List enabled payment providers
+      responses:
+        '200':
+          description: Providers
+  /api/payment/create:
+    post:
+      tags: [Payment]
+      summary: Create payment parameters for an order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePaymentRequest'
+      responses:
+        '200':
+          description: Payment created
+  /api/payment/order/{orderId}:
+    get:
+      tags: [Payment]
+      summary: Get order payment state
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Order state
+  /api/payment/query/{tradeNo}:
+    get:
+      tags: [Payment]
+      summary: Query payment by trade number
+      parameters:
+        - name: tradeNo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Payment state
+  /api/payment/notify/{provider}:
+    get:
+      tags: [Payment]
+      summary: Payment provider notification callback
+      parameters:
+        - $ref: '#/components/parameters/Provider'
+      responses:
+        '200':
+          description: Callback handled
+    post:
+      tags: [Payment]
+      summary: Payment provider notification callback
+      parameters:
+        - $ref: '#/components/parameters/Provider'
+      responses:
+        '200':
+          description: Callback handled
+  /api/admin/nodes:
+    get:
+      tags: [Admin]
+      summary: List nodes and synced inbounds
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Nodes
+  /api/admin/nodes/{id}/inbounds:
+    get:
+      tags: [Admin]
+      summary: List synced inbounds for a node
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Inbounds
+  /api/admin/export/config:
+    get:
+      tags: [Admin]
+      summary: Export configuration snapshot
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: JSON file
+  /api/admin/export/audit-logs:
+    get:
+      tags: [Admin]
+      summary: Export audit logs
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: JSON file
+  /api/admin/backup/database:
+    get:
+      tags: [Admin]
+      summary: Export SQL database backup
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: SQL file
+  /api/agent/latency:
+    post:
+      tags: [Probe]
+      summary: Upload carrier latency probe results
+      security:
+        - probeToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LatencyUpload'
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '401':
+          description: Invalid probe token
+  /api/agent/trace:
+    post:
+      tags: [Probe]
+      summary: Upload carrier route trace results
+      security:
+        - probeToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TraceUpload'
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '401':
+          description: Invalid probe token
+  /api/subscription/{id}:
+    get:
+      tags: [Subscription]
+      summary: Download subscription content with token
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Subscription text
+          content:
+            text/plain:
+              schema:
+                type: string
+  /api/support/attachments/{id}:
+    get:
+      tags: [Subscription]
+      summary: Download or preview support attachment
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: download
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Attachment file
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: next-auth.session-token
+    probeToken:
+      type: http
+      scheme: bearer
+  parameters:
+    NodeId:
+      name: nodeId
+      in: query
+      required: true
+      schema:
+        type: string
+    Provider:
+      name: provider
+      in: path
+      required: true
+      schema:
+        type: string
+  schemas:
+    OkResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+      required: [ok]
+    Carrier:
+      type: string
+      enum: [telecom, unicom, mobile]
+    RegisterRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        name:
+          type: string
+        inviteCode:
+          type: string
+        turnstileToken:
+          type: string
+      required: [email, password]
+    CreatePaymentRequest:
+      type: object
+      properties:
+        orderId:
+          type: string
+        provider:
+          type: string
+      required: [orderId, provider]
+    LatencyUpload:
+      type: object
+      properties:
+        latencies:
+          type: array
+          items:
+            type: object
+            properties:
+              carrier:
+                $ref: '#/components/schemas/Carrier'
+              latencyMs:
+                type: number
+            required: [carrier, latencyMs]
+      required: [latencies]
+    TraceHop:
+      type: object
+      additionalProperties: true
+      properties:
+        hop:
+          type: integer
+        ip:
+          type: string
+        geo:
+          type: string
+        latency:
+          type: number
+    TraceUpload:
+      type: object
+      properties:
+        traces:
+          type: array
+          items:
+            type: object
+            properties:
+              carrier:
+                $ref: '#/components/schemas/Carrier'
+              hops:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TraceHop'
+              summary:
+                type: string
+              hopCount:
+                type: integer
+            required: [carrier, hops]
+      required: [traces]

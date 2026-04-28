@@ -1,0 +1,85 @@
+"use server";
+
+import bcrypt from "bcryptjs";
+import { revalidatePath } from "next/cache";
+import { randomBytes } from "crypto";
+import { z } from "zod";
+import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/require-auth";
+
+const profileSchema = z.object({
+  name: z.string().trim().min(1, "昵称不能为空").max(50, "昵称不能超过 50 个字符"),
+});
+
+const passwordSchema = z.object({
+  currentPassword: z.string().min(6, "当前密码不能为空"),
+  newPassword: z.string().min(6, "新密码至少 6 位"),
+  confirmPassword: z.string().min(6, "确认密码至少 6 位"),
+});
+
+async function generateUniqueInviteCode(): Promise<string> {
+  for (let i = 0; i < 10; i += 1) {
+    const code = randomBytes(4).toString("hex").toUpperCase();
+    const exists = await prisma.user.findUnique({
+      where: { inviteCode: code },
+      select: { id: true },
+    });
+    if (!exists) {
+      return code;
+    }
+  }
+
+  throw new Error("邀请码生成失败，请稍后重试");
+}
+
+export async function updateAccountProfile(formData: FormData) {
+  const session = await requireAuth();
+  const data = profileSchema.parse(Object.fromEntries(formData));
+
+  await prisma.user.update({
+    where: { id: session.user.id },
+    data: { name: data.name },
+  });
+
+  revalidatePath("/account");
+}
+
+export async function changeAccountPassword(formData: FormData) {
+  const session = await requireAuth();
+  const data = passwordSchema.parse(Object.fromEntries(formData));
+
+  if (data.newPassword !== data.confirmPassword) {
+    throw new Error("两次输入的新密码不一致");
+  }
+
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: session.user.id },
+    select: { password: true },
+  });
+
+  const valid = await bcrypt.compare(data.currentPassword, user.password);
+  if (!valid) {
+    throw new Error("当前密码不正确");
+  }
+
+  const hashed = await bcrypt.hash(data.newPassword, 12);
+  await prisma.user.update({
+    where: { id: session.user.id },
+    data: { password: hashed },
+  });
+
+  revalidatePath("/account");
+}
+
+export async function generateInviteCode() {
+  const session = await requireAuth();
+  const code = await generateUniqueInviteCode();
+
+  await prisma.user.update({
+    where: { id: session.user.id },
+    data: { inviteCode: code },
+  });
+
+  revalidatePath("/account");
+  return code;
+}

@@ -1,0 +1,750 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+  BANNED
+}
+
+enum SubscriptionType {
+  STREAMING
+  PROXY
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  SUSPENDED
+}
+
+enum PlanPricingMode {
+  TRAFFIC_SLIDER
+  FIXED_PACKAGE
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  CANCELLED
+  REFUNDED
+}
+
+enum OrderKind {
+  NEW_PURCHASE
+  RENEWAL
+  TRAFFIC_TOPUP
+}
+
+enum Protocol {
+  VMESS
+  VLESS
+  TROJAN
+  SHADOWSOCKS
+  HYSTERIA2
+}
+
+enum NotificationType {
+  ORDER
+  SUBSCRIPTION
+  TRAFFIC
+  SYSTEM
+}
+
+enum NotificationLevel {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+enum AnnouncementAudience {
+  PUBLIC
+  USERS
+  ADMINS
+  SPECIFIC_USER
+}
+
+enum AnnouncementDisplayType {
+  INLINE
+  BIG
+  POPUP
+}
+
+enum TaskKind {
+  REMINDER_DISPATCH
+  ORDER_PROVISION_RETRY
+}
+
+enum TaskStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum OrderReviewStatus {
+  NORMAL
+  FLAGGED
+  RESOLVED
+}
+
+enum CouponDiscountType {
+  AMOUNT_OFF
+  PERCENT_OFF
+}
+
+enum InviteRewardStatus {
+  ISSUED
+  CANCELLED
+}
+
+enum SupportTicketStatus {
+  OPEN
+  USER_REPLIED
+  ADMIN_REPLIED
+  CLOSED
+}
+
+enum SupportTicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+model User {
+  id          String     @id @default(cuid())
+  email       String     @unique
+  password    String
+  name        String?
+  role        Role       @default(USER)
+  status      UserStatus @default(ACTIVE)
+  inviteCode  String?    @unique
+  invitedById String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  subscriptions         UserSubscription[]
+  orders                Order[]
+  cartItems             ShoppingCartItem[]
+  couponGrants          CouponGrant[]
+  inviteRewardLedgers   InviteRewardLedger[] @relation("InviteRewardInviter")
+  inviteeRewardLedgers  InviteRewardLedger[] @relation("InviteRewardInvitee")
+  streamingSlots        StreamingSlot[]
+  nodeClients           NodeClient[]
+  notifications         UserNotification[]
+  auditLogs             AuditLog[]           @relation("AuditActor")
+  invitedBy             User?                @relation("UserInvites", fields: [invitedById], references: [id], onDelete: SetNull)
+  invitedUsers          User[]               @relation("UserInvites")
+  createdAnnouncements  Announcement[]       @relation("AnnouncementCreator")
+  receivedAnnouncements Announcement[]       @relation("AnnouncementTarget")
+  taskRuns              TaskRun[]            @relation("TaskTriggeredBy")
+  supportTickets        SupportTicket[]
+  supportReplies        SupportTicketReply[]
+}
+
+model SubscriptionCategory {
+  id          String           @id @default(cuid())
+  name        String
+  type        SubscriptionType
+  description String?
+  sortOrder   Int              @default(100)
+  accent      String?
+  isActive    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  plans SubscriptionPlan[]
+
+  @@index([type, isActive, sortOrder])
+}
+
+model SubscriptionPlan {
+  id                   String           @id @default(cuid())
+  name                 String
+  type                 SubscriptionType
+  description          String?
+  durationDays         Int
+  isActive             Boolean          @default(true)
+  isFeatured           Boolean          @default(false)
+  recommendationLabel  String?
+  recommendationReason String?
+  sortOrder            Int              @default(100)
+  totalLimit           Int?
+  perUserLimit         Int?
+  totalTrafficGb       Int?
+  allowRenewal         Boolean          @default(false)
+  allowTrafficTopup    Boolean          @default(false)
+  renewalPrice         Decimal?         @db.Decimal(10, 2)
+  renewalPricingMode   String           @default("FIXED_DURATION")
+  renewalDurationDays  Int?
+  renewalMinDays       Int?
+  renewalMaxDays       Int?
+  renewalTrafficGb     Int?
+  topupPricingMode     String           @default("PER_GB")
+  topupPricePerGb      Decimal?         @db.Decimal(10, 2)
+  topupFixedPrice      Decimal?         @db.Decimal(10, 2)
+  minTopupGb           Int?
+  maxTopupGb           Int?
+  streamingServiceId   String?
+  categoryId           String?
+  pricingMode          PlanPricingMode  @default(TRAFFIC_SLIDER)
+  fixedTrafficGb       Int?
+  fixedPrice           Decimal?         @db.Decimal(10, 2)
+  // STREAMING: fixed price per slot
+  price                Decimal?         @db.Decimal(10, 2)
+  // PROXY: linked to a node, price per GB, slider purchase
+  nodeId               String?
+  inboundId            String?
+  pricePerGb           Decimal?         @db.Decimal(10, 2)
+  minTrafficGb         Int?             @default(10)
+  maxTrafficGb         Int?             @default(1000)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  node             NodeServer?           @relation(fields: [nodeId], references: [id])
+  category         SubscriptionCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  inbound          NodeInbound?          @relation(fields: [inboundId], references: [id])
+  streamingService StreamingService?     @relation(fields: [streamingServiceId], references: [id])
+  inboundOptions   PlanInboundOption[]
+  subscriptions    UserSubscription[]
+  orders           Order[]
+  cartItems        ShoppingCartItem[]
+  orderItems       OrderItem[]
+
+  @@index([type, isActive, isFeatured, sortOrder])
+  @@index([inboundId])
+  @@index([streamingServiceId])
+  @@index([categoryId])
+}
+
+model UserSubscription {
+  id            String             @id @default(cuid())
+  userId        String
+  planId        String
+  downloadToken String             @unique @default(cuid())
+  status        SubscriptionStatus @default(ACTIVE)
+  startDate     DateTime           @default(now())
+  endDate       DateTime
+  trafficUsed   BigInt             @default(0)
+  trafficLimit  BigInt?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  user          User             @relation(fields: [userId], references: [id])
+  plan          SubscriptionPlan @relation(fields: [planId], references: [id])
+  streamingSlot StreamingSlot?
+  nodeClient    NodeClient?
+  createOrder   Order?           @relation("OrderCreatedSubscription")
+  targetOrders  Order[]          @relation("OrderTargetSubscription")
+
+  @@index([userId])
+  @@index([status])
+}
+
+model StreamingService {
+  id          String   @id @default(cuid())
+  name        String
+  credentials String
+  maxSlots    Int
+  usedSlots   Int      @default(0)
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  slots StreamingSlot[]
+  plans SubscriptionPlan[]
+}
+
+model StreamingSlot {
+  id             String   @id @default(cuid())
+  serviceId      String
+  userId         String
+  subscriptionId String   @unique
+  assignedAt     DateTime @default(now())
+
+  service      StreamingService @relation(fields: [serviceId], references: [id])
+  user         User             @relation(fields: [userId], references: [id])
+  subscription UserSubscription @relation(fields: [subscriptionId], references: [id])
+
+  @@index([serviceId])
+}
+
+model NodeServer {
+  id             String    @id @default(cuid())
+  name           String
+  panelUrl      String?
+  panelUsername String?
+  panelPassword String?
+  panelType     String    @default("3x-ui")
+  agentToken     String?
+  status         String    @default("active")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  inbounds    NodeInbound[]
+  plans       SubscriptionPlan[]
+  routeTraces RouteTrace[]
+  latencies   NodeLatency[]
+  latencyLogs NodeLatencyLog[]
+}
+
+model RouteTrace {
+  id        String   @id @default(cuid())
+  nodeId    String
+  carrier   String
+  hops      Json
+  summary   String
+  hopCount  Int
+  updatedAt DateTime @updatedAt
+
+  node NodeServer @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@unique([nodeId, carrier])
+  @@index([nodeId])
+}
+
+model NodeInbound {
+  id             String   @id @default(cuid())
+  serverId       String
+  panelInboundId Int?
+  protocol       Protocol
+  port           Int
+  tag            String
+  settings       Json
+  streamSettings Json?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  server           NodeServer          @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  clients          NodeClient[]
+  plans            SubscriptionPlan[]
+  planOptions      PlanInboundOption[]
+  selectedByOrders Order[]
+  cartItems        ShoppingCartItem[]
+  orderItems       OrderItem[]
+
+  @@unique([serverId, tag])
+  @@unique([serverId, panelInboundId])
+  @@index([serverId])
+}
+
+model PlanInboundOption {
+  id        String   @id @default(cuid())
+  planId    String
+  inboundId String
+  createdAt DateTime @default(now())
+
+  plan    SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  inbound NodeInbound      @relation(fields: [inboundId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, inboundId])
+  @@index([planId])
+  @@index([inboundId])
+}
+
+model ShoppingCartItem {
+  id                String   @id @default(cuid())
+  userId            String
+  planId            String
+  selectedInboundId String?
+  trafficGb         Int?
+  quantity          Int      @default(1)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan            SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  selectedInbound NodeInbound?     @relation(fields: [selectedInboundId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([planId])
+}
+
+model OrderItem {
+  id                String   @id @default(cuid())
+  orderId           String
+  planId            String
+  selectedInboundId String?
+  trafficGb         Int?
+  quantity          Int      @default(1)
+  unitAmount        Decimal  @db.Decimal(10, 2)
+  amount            Decimal  @db.Decimal(10, 2)
+  createdAt         DateTime @default(now())
+
+  order           Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  plan            SubscriptionPlan @relation(fields: [planId], references: [id])
+  selectedInbound NodeInbound?     @relation(fields: [selectedInboundId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([planId])
+}
+
+model NodeClient {
+  id             String    @id @default(cuid())
+  inboundId      String
+  userId         String
+  subscriptionId String    @unique
+  email          String
+  uuid           String
+  trafficUp      BigInt    @default(0)
+  trafficDown    BigInt    @default(0)
+  expiryTime     DateTime?
+  isEnabled      Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  inbound      NodeInbound      @relation(fields: [inboundId], references: [id], onDelete: Cascade)
+  user         User             @relation(fields: [userId], references: [id])
+  subscription UserSubscription @relation(fields: [subscriptionId], references: [id])
+
+  @@index([inboundId])
+  @@index([userId])
+}
+
+model Order {
+  id                   String            @id @default(cuid())
+  userId               String
+  planId               String
+  kind                 OrderKind         @default(NEW_PURCHASE)
+  selectedInboundId    String?
+  targetSubscriptionId String?
+  subscriptionId       String?           @unique
+  amount               Decimal           @db.Decimal(10, 2)
+  subtotalAmount       Decimal           @default(0) @db.Decimal(10, 2)
+  discountAmount       Decimal           @default(0) @db.Decimal(10, 2)
+  couponId             String?
+  couponCode           String?
+  promotionName        String?
+  trafficGb            Int?
+  durationDays         Int?
+  status               OrderStatus       @default(PENDING)
+  paymentMethod        String?
+  paymentRef           String?
+  paymentUrl           String?
+  tradeNo              String?           @unique
+  expireAt             DateTime?
+  note                 String?
+  reviewStatus         OrderReviewStatus @default(NORMAL)
+  reviewNote           String?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  user               User                 @relation(fields: [userId], references: [id])
+  plan               SubscriptionPlan     @relation(fields: [planId], references: [id])
+  selectedInbound    NodeInbound?         @relation(fields: [selectedInboundId], references: [id])
+  targetSubscription UserSubscription?    @relation("OrderTargetSubscription", fields: [targetSubscriptionId], references: [id])
+  subscription       UserSubscription?    @relation("OrderCreatedSubscription", fields: [subscriptionId], references: [id])
+  coupon             Coupon?              @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  items              OrderItem[]
+  couponGrants       CouponGrant[]        @relation("CouponGrantUsedOrder")
+  inviteRewards      InviteRewardLedger[]
+
+  @@index([userId])
+  @@index([kind])
+  @@index([targetSubscriptionId])
+  @@index([status])
+  @@index([tradeNo])
+  @@index([reviewStatus])
+  @@index([couponId])
+}
+
+model NodeLatency {
+  id        String   @id @default(cuid())
+  nodeId    String
+  carrier   String
+  latencyMs Int
+  checkedAt DateTime @default(now())
+
+  node NodeServer @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@unique([nodeId, carrier])
+  @@index([nodeId])
+}
+
+model NodeLatencyLog {
+  id        String   @id @default(cuid())
+  nodeId    String
+  carrier   String
+  latencyMs Int
+  checkedAt DateTime @default(now())
+
+  node NodeServer @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@index([nodeId, carrier, checkedAt])
+}
+
+model Coupon {
+  id                String             @id @default(cuid())
+  code              String             @unique
+  name              String
+  description       String?
+  discountType      CouponDiscountType @default(AMOUNT_OFF)
+  discountValue     Decimal            @db.Decimal(10, 2)
+  thresholdAmount   Decimal?           @db.Decimal(10, 2)
+  maxDiscountAmount Decimal?           @db.Decimal(10, 2)
+  totalLimit        Int?
+  perUserLimit      Int?
+  isPublic          Boolean            @default(true)
+  isActive          Boolean            @default(true)
+  startsAt          DateTime?
+  endsAt            DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  orders Order[]
+  grants CouponGrant[]
+
+  @@index([isActive, startsAt, endsAt])
+}
+
+model CouponGrant {
+  id            String    @id @default(cuid())
+  couponId      String
+  userId        String
+  source        String?
+  sourceOrderId String?
+  usedOrderId   String?
+  createdAt     DateTime  @default(now())
+  usedAt        DateTime?
+
+  coupon    Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  usedOrder Order? @relation("CouponGrantUsedOrder", fields: [usedOrderId], references: [id], onDelete: SetNull)
+
+  @@index([userId, usedAt])
+  @@index([couponId])
+}
+
+model PromotionRule {
+  id              String    @id @default(cuid())
+  name            String
+  thresholdAmount Decimal   @db.Decimal(10, 2)
+  discountAmount  Decimal   @db.Decimal(10, 2)
+  isActive        Boolean   @default(true)
+  startsAt        DateTime?
+  endsAt          DateTime?
+  sortOrder       Int       @default(100)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([isActive, thresholdAmount, sortOrder])
+}
+
+model InviteRewardLedger {
+  id           String             @id @default(cuid())
+  inviterId    String
+  inviteeId    String
+  orderId      String
+  rewardAmount Decimal            @default(0) @db.Decimal(10, 2)
+  couponCode   String?
+  status       InviteRewardStatus @default(ISSUED)
+  createdAt    DateTime           @default(now())
+
+  inviter User  @relation("InviteRewardInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  invitee User  @relation("InviteRewardInvitee", fields: [inviteeId], references: [id], onDelete: Cascade)
+  order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, inviterId])
+  @@index([inviterId, createdAt])
+  @@index([inviteeId, createdAt])
+}
+
+model PaymentConfig {
+  id        String   @id @default(cuid())
+  provider  String   @unique
+  enabled   Boolean  @default(false)
+  config    Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TrafficLog {
+  id        String   @id @default(cuid())
+  clientId  String
+  upload    BigInt
+  download  BigInt
+  timestamp DateTime @default(now())
+
+  @@index([clientId])
+  @@index([timestamp])
+}
+
+model UserNotification {
+  id        String            @id @default(cuid())
+  userId    String
+  type      NotificationType
+  level     NotificationLevel @default(INFO)
+  title     String
+  body      String
+  link      String?
+  isRead    Boolean           @default(false)
+  readAt    DateTime?
+  dedupeKey String?           @unique
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+  @@index([type, createdAt])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  actorEmail  String?
+  actorRole   Role?
+  action      String
+  targetType  String
+  targetId    String?
+  targetLabel String?
+  message     String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  actor User? @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+}
+
+model AppConfig {
+  id                              String   @id @default("default")
+  siteName                        String   @default("J-Board")
+  siteUrl                         String?
+  allowRegistration               Boolean  @default(true)
+  requireInviteCode               Boolean  @default(false)
+  supportContact                  String?
+  maintenanceNotice               String?
+  siteNotice                      String?
+  autoReminderDispatchEnabled     Boolean  @default(true)
+  reminderDispatchIntervalMinutes Int      @default(60)
+  trafficSyncEnabled              Boolean  @default(true)
+  trafficSyncIntervalSeconds      Int      @default(60)
+  inviteRewardCouponId            String?
+  inviteRewardRate                Decimal  @default(0) @db.Decimal(5, 2)
+  inviteRewardEnabled             Boolean  @default(false)
+  turnstileSiteKey                String?
+  turnstileSecretKey              String?
+  createdAt                       DateTime @default(now())
+  updatedAt                       DateTime @updatedAt
+}
+
+model Announcement {
+  id               String                  @id @default(cuid())
+  title            String
+  body             String
+  audience         AnnouncementAudience    @default(USERS)
+  displayType      AnnouncementDisplayType @default(INLINE)
+  targetUserId     String?
+  createdById      String?
+  isActive         Boolean                 @default(true)
+  dismissible      Boolean                 @default(true)
+  sendNotification Boolean                 @default(true)
+  startAt          DateTime?
+  endAt            DateTime?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  targetUser User? @relation("AnnouncementTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+  createdBy  User? @relation("AnnouncementCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([audience, isActive, createdAt])
+  @@index([targetUserId, isActive])
+  @@index([startAt, endAt, isActive])
+}
+
+model TaskRun {
+  id            String     @id @default(cuid())
+  kind          TaskKind
+  status        TaskStatus @default(PENDING)
+  title         String
+  targetType    String?
+  targetId      String?
+  payload       Json?
+  result        Json?
+  errorMessage  String?
+  retryable     Boolean    @default(false)
+  retryCount    Int        @default(0)
+  triggeredById String?
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  triggeredBy User? @relation("TaskTriggeredBy", fields: [triggeredById], references: [id], onDelete: SetNull)
+
+  @@index([kind, createdAt])
+  @@index([status, createdAt])
+  @@index([targetType, targetId])
+}
+
+model SupportTicket {
+  id          String                @id @default(cuid())
+  userId      String
+  subject     String
+  category    String?
+  status      SupportTicketStatus   @default(OPEN)
+  priority    SupportTicketPriority @default(NORMAL)
+  lastReplyAt DateTime?
+  closedAt    DateTime?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  user        User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replies     SupportTicketReply[]
+  attachments SupportTicketAttachment[]
+
+  @@index([userId, status, createdAt])
+  @@index([status, priority, updatedAt])
+}
+
+model SupportTicketReply {
+  id           String   @id @default(cuid())
+  ticketId     String
+  authorUserId String?
+  isAdmin      Boolean  @default(false)
+  body         String
+  createdAt    DateTime @default(now())
+
+  ticket      SupportTicket             @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author      User?                     @relation(fields: [authorUserId], references: [id], onDelete: SetNull)
+  attachments SupportTicketAttachment[]
+
+  @@index([ticketId, createdAt])
+  @@index([authorUserId, createdAt])
+}
+
+model SupportTicketAttachment {
+  id        String   @id @default(cuid())
+  ticketId  String
+  replyId   String
+  fileName  String
+  mimeType  String
+  size      Int
+  content   Bytes
+  createdAt DateTime @default(now())
+
+  ticket SupportTicket      @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  reply  SupportTicketReply @relation(fields: [replyId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+  @@index([replyId, createdAt])
+}

@@ -1,0 +1,57 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { authenticateAgent, isAuthError } from "@/lib/agent-auth";
+
+/**
+ * POST /api/agent/latency
+ * Probe agent pushes three-carrier TCP ping latency results.
+ * Body: { latencies: [{ carrier: "telecom"|"unicom"|"mobile", latencyMs: number }] }
+ */
+export async function POST(req: Request) {
+  const auth = await authenticateAgent(req);
+  if (isAuthError(auth)) return auth;
+  const { nodeId } = auth;
+
+  let body: {
+    latencies: Array<{ carrier: string; latencyMs: number }>;
+  };
+
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  if (!Array.isArray(body.latencies) || body.latencies.length === 0) {
+    return NextResponse.json({ error: "Missing latencies" }, { status: 400 });
+  }
+
+  const validCarriers = new Set(["telecom", "unicom", "mobile"]);
+
+  for (const entry of body.latencies) {
+    if (!validCarriers.has(entry.carrier)) continue;
+    const latencyMs = Math.trunc(entry.latencyMs);
+    if (!Number.isFinite(latencyMs) || latencyMs < 0) continue;
+
+    await prisma.nodeLatency.upsert({
+      where: {
+        nodeId_carrier: { nodeId, carrier: entry.carrier },
+      },
+      create: {
+        nodeId,
+        carrier: entry.carrier,
+        latencyMs,
+      },
+      update: {
+        latencyMs,
+        checkedAt: new Date(),
+      },
+    });
+
+    await prisma.nodeLatencyLog.create({
+      data: { nodeId, carrier: entry.carrier, latencyMs },
+    });
+  }
+
+  return NextResponse.json({ ok: true });
+}

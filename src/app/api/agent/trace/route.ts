@@ -1,0 +1,65 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { authenticateAgent, isAuthError } from "@/lib/agent-auth";
+import { normalizeTraceHops, normalizeTraceText } from "@/lib/trace-normalize";
+
+export async function POST(req: Request) {
+  const auth = await authenticateAgent(req);
+  if (isAuthError(auth)) return auth;
+  const { nodeId } = auth;
+
+  let body: {
+    traces: Array<{
+      carrier: string;
+      hops: unknown;
+      summary?: string;
+      hopCount?: number;
+    }>;
+  };
+
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  if (!Array.isArray(body.traces) || body.traces.length === 0) {
+    return NextResponse.json({ error: "Missing traces" }, { status: 400 });
+  }
+
+  const validCarriers = new Set(["telecom", "unicom", "mobile"]);
+
+  for (const trace of body.traces) {
+    if (!validCarriers.has(trace.carrier)) continue;
+    const normalizedHops = normalizeTraceHops(trace.hops);
+    const normalizedSummary = normalizeTraceText(trace.summary) || "路由信息";
+    const hopCount = Number(trace.hopCount);
+    const normalizedHopCount =
+      Number.isFinite(hopCount) && hopCount > 0
+        ? Math.trunc(hopCount)
+        : normalizedHops.length;
+
+    await prisma.routeTrace.upsert({
+      where: {
+        nodeId_carrier: {
+          nodeId,
+          carrier: trace.carrier,
+        },
+      },
+      create: {
+        nodeId,
+        carrier: trace.carrier,
+        hops: normalizedHops as object,
+        summary: normalizedSummary,
+        hopCount: normalizedHopCount,
+      },
+      update: {
+        hops: normalizedHops as object,
+        summary: normalizedSummary,
+        hopCount: normalizedHopCount,
+      },
+    });
+  }
+
+  return NextResponse.json({ ok: true });
+}
