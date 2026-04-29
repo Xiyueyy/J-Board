@@ -90,6 +90,7 @@ export async function POST(req: Request) {
     data: {
       email,
       emailVerifiedAt: config.emailVerificationRequired ? null : new Date(),
+      status: config.emailVerificationRequired ? "PENDING_EMAIL" : "ACTIVE",
       password: hashedPassword,
       name: name || null,
       invitedById: inviterId,

@@ -244,7 +244,10 @@ export async function verifyEmailToken(token: string) {
     if (!record.userId) return { ok: false as const, message: "验证链接缺少账户信息" };
     await prisma.user.update({
       where: { id: record.userId },
-      data: { emailVerifiedAt: new Date() },
+      data: {
+        emailVerifiedAt: new Date(),
+        status: "ACTIVE",
+      },
     });
     return { ok: true as const, message: "邮箱验证完成，现在可以登录账户。" };
   }

@@ -77,7 +77,7 @@ export async function requestRegistrationVerification(formData: FormData) {
     select: { id: true, email: true, status: true, emailVerifiedAt: true },
   });
 
-  if (user?.status === "ACTIVE" && !user.emailVerifiedAt) {
+  if (user && ["ACTIVE", "PENDING_EMAIL"].includes(user.status) && !user.emailVerifiedAt) {
     await sendRegistrationVerificationEmail({
       userId: user.id,
       email: user.email,

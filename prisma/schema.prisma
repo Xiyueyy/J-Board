@@ -13,6 +13,7 @@ enum Role {
 
 enum UserStatus {
   ACTIVE
+  PENDING_EMAIL
   DISABLED
   BANNED
 }

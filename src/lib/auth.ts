@@ -27,12 +27,17 @@ export const authOptions: NextAuthOptions = {
         const user = await prisma.user.findUnique({
           where: { email: credentials.email.trim().toLowerCase() },
         });
-        if (!user || user.status !== "ACTIVE") return null;
+        if (!user) return null;
         const valid = await bcrypt.compare(credentials.password, user.password);
         if (!valid) return null;
-        if (config?.emailVerificationRequired && user.role !== "ADMIN" && !user.emailVerifiedAt) {
+        if (
+          user.role !== "ADMIN" &&
+          !user.emailVerifiedAt &&
+          (config?.emailVerificationRequired || user.status === "PENDING_EMAIL")
+        ) {
           throw new Error("EMAIL_NOT_VERIFIED");
         }
+        if (user.status !== "ACTIVE") return null;
         return { id: user.id, email: user.email, name: user.name, role: user.role };
       },
     }),

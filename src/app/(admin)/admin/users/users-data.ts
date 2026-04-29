@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { Prisma, UserStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { parsePage } from "@/lib/utils";
 
@@ -31,7 +31,7 @@ export async function getAdminUsers(
 
   const where = {
     ...(role ? { role: role as "ADMIN" | "USER" } : {}),
-    ...(status ? { status: status as "ACTIVE" | "DISABLED" | "BANNED" } : {}),
+    ...(status ? { status: status as UserStatus } : {}),
     ...(q
       ? {
           OR: [

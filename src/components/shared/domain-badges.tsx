@@ -51,6 +51,7 @@ export const userRoleLabels: Record<Role, string> = {
 
 export const userStatusLabels: Record<UserStatus, string> = {
   ACTIVE: "正常",
+  PENDING_EMAIL: "待邮箱验证",
   DISABLED: "禁用",
   BANNED: "封禁",
 };
@@ -104,6 +105,7 @@ export function getSubscriptionTypeTone(type: SubscriptionType): StatusTone {
 
 export function getUserStatusTone(status: UserStatus): StatusTone {
   if (status === "ACTIVE") return "success";
+  if (status === "PENDING_EMAIL") return "info";
   if (status === "DISABLED") return "warning";
   return "danger";
 }

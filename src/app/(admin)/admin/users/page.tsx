@@ -44,6 +44,7 @@ export default async function UsersPage({
             options: [
               { label: "全部状态", value: "" },
               { label: "正常", value: "ACTIVE" },
+              { label: "待邮箱验证", value: "PENDING_EMAIL" },
               { label: "禁用", value: "DISABLED" },
               { label: "封禁", value: "BANNED" },
             ],

@@ -1,4 +1,4 @@
-import type { Prisma, SubscriptionRiskEvent } from "@prisma/client";
+import type { Prisma, SubscriptionRiskEvent, UserStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { parsePage } from "@/lib/utils";
 import {
@@ -11,7 +11,7 @@ type RiskUser = {
   id: string;
   email: string;
   name: string | null;
-  status: "ACTIVE" | "DISABLED" | "BANNED";
+  status: UserStatus;
 };
 
 type RiskSubscription = {
