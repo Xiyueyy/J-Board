@@ -62,9 +62,9 @@ export function UserActions({ user }: { user: User }) {
       <ConfirmActionButton
         size="sm"
         variant="destructive"
-        title="删除这个用户？"
-        description="仅无业务数据的空账号会被物理删除；有订单、订阅或工单的用户请改用禁用/封禁。"
-        confirmLabel="删除用户"
+        title="强制删除这个用户？"
+        description="将同步删除该用户在节点面板中的客户端，并永久清理名下订单、订阅、工单、通知、访问日志等数据。此操作不可恢复。"
+        confirmLabel="强制删除"
         successMessage="用户已删除"
         errorMessage="删除失败"
         onConfirm={() => deleteUser(user.id)}

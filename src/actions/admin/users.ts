@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { actorFromSession, recordAuditLog } from "@/services/audit";
+import { createPanelAdapter } from "@/services/node-panel/factory";
 
 const createUserSchema = z.object({
   email: z.string().email(),
@@ -20,23 +21,6 @@ const updateUserSchema = z.object({
   name: z.string().optional(),
   role: z.enum(["ADMIN", "USER"]),
 });
-
-const userDeleteBlockerLabels: Record<string, string> = {
-  subscriptions: "订阅",
-  orders: "订单",
-  nodeClients: "节点客户端",
-  streamingSlots: "流媒体分配",
-  supportTickets: "工单",
-  inviteRewardLedgers: "邀请返利记录",
-  inviteeRewardLedgers: "被邀请返利记录",
-};
-
-function formatDeleteBlockers(counts: Record<string, number>) {
-  return Object.entries(counts)
-    .filter(([, count]) => count > 0)
-    .map(([key, count]) => `${userDeleteBlockerLabels[key] ?? key} ${count} 条`)
-    .join("、");
-}
 
 export async function createUser(formData: FormData) {
   const session = await requireAdmin();
@@ -120,6 +104,30 @@ export async function deleteUser(id: string) {
       id: true,
       email: true,
       role: true,
+      subscriptions: { select: { id: true } },
+      nodeClients: {
+        select: {
+          id: true,
+          email: true,
+          uuid: true,
+          inbound: {
+            select: {
+              panelInboundId: true,
+              server: {
+                select: {
+                  id: true,
+                  name: true,
+                  panelType: true,
+                  panelUrl: true,
+                  panelUsername: true,
+                  panelPassword: true,
+                },
+              },
+            },
+          },
+        },
+      },
+      streamingSlots: { select: { serviceId: true } },
       _count: {
         select: {
           subscriptions: true,
@@ -127,6 +135,11 @@ export async function deleteUser(id: string) {
           nodeClients: true,
           streamingSlots: true,
           supportTickets: true,
+          supportReplies: true,
+          cartItems: true,
+          couponGrants: true,
+          notifications: true,
+          emailTokens: true,
           inviteRewardLedgers: true,
           inviteeRewardLedgers: true,
         },
@@ -151,24 +164,110 @@ export async function deleteUser(id: string) {
     }
   }
 
-  const blockers = formatDeleteBlockers(user._count);
-  if (blockers) {
-    throw new Error(
-      `无法直接删除该用户：存在 ${blockers}。为避免订单、订阅和客服记录丢失，请改用“禁用”或“封禁”；如确需彻底清理，请先人工处理关联数据。`,
-    );
+  const panelAdapters = new Map<string, ReturnType<typeof createPanelAdapter>>();
+  for (const client of user.nodeClients) {
+    const panelInboundId = client.inbound.panelInboundId;
+    const server = client.inbound.server;
+    if (panelInboundId == null) {
+      throw new Error(`节点客户端 ${client.email} 所属入站缺少 3x-ui 入站 ID，无法强制删除。请先同步节点入站后重试。`);
+    }
+
+    let adapter = panelAdapters.get(server.id);
+    if (!adapter) {
+      adapter = createPanelAdapter(server);
+      const loggedIn = await adapter.login();
+      if (!loggedIn) {
+        throw new Error(`节点 ${server.name} 登录失败，无法删除该用户在节点面板中的客户端。`);
+      }
+      panelAdapters.set(server.id, adapter);
+    }
+
+    await adapter.deleteClient(panelInboundId, client.uuid);
   }
 
-  await prisma.user.delete({ where: { id: user.id } });
+  const subscriptionIds = user.subscriptions.map((subscription) => subscription.id);
+  const nodeClientIds = user.nodeClients.map((client) => client.id);
+  const streamingServiceIds = [...new Set(user.streamingSlots.map((slot) => slot.serviceId))];
+  const subscriptionLinkedWhere = subscriptionIds.length > 0
+    ? { OR: [{ userId: user.id }, { subscriptionId: { in: subscriptionIds } }] }
+    : { userId: user.id };
+  const orderWhere = subscriptionIds.length > 0
+    ? {
+        OR: [
+          { userId: user.id },
+          { targetSubscriptionId: { in: subscriptionIds } },
+          { subscriptionId: { in: subscriptionIds } },
+        ],
+      }
+    : { userId: user.id };
+
+  const deleted = await prisma.$transaction(async (tx) => {
+    const trafficLogs = nodeClientIds.length > 0
+      ? await tx.trafficLog.deleteMany({ where: { clientId: { in: nodeClientIds } } })
+      : { count: 0 };
+    const accessLogs = await tx.subscriptionAccessLog.deleteMany({ where: subscriptionLinkedWhere });
+    const riskEvents = await tx.subscriptionRiskEvent.deleteMany({ where: subscriptionLinkedWhere });
+    const inviteRewards = await tx.inviteRewardLedger.deleteMany({
+      where: { OR: [{ inviterId: user.id }, { inviteeId: user.id }] },
+    });
+    const couponGrants = await tx.couponGrant.deleteMany({ where: { userId: user.id } });
+    const cartItems = await tx.shoppingCartItem.deleteMany({ where: { userId: user.id } });
+    const notifications = await tx.userNotification.deleteMany({ where: { userId: user.id } });
+    const emailTokens = await tx.emailToken.deleteMany({ where: { userId: user.id } });
+    const supportTickets = await tx.supportTicket.deleteMany({ where: { userId: user.id } });
+    const supportReplies = await tx.supportTicketReply.deleteMany({ where: { authorUserId: user.id } });
+    const orders = await tx.order.deleteMany({ where: orderWhere });
+    const nodeClients = await tx.nodeClient.deleteMany({ where: { userId: user.id } });
+    const streamingSlots = await tx.streamingSlot.deleteMany({ where: { userId: user.id } });
+
+    for (const serviceId of streamingServiceIds) {
+      const usedSlots = await tx.streamingSlot.count({ where: { serviceId } });
+      await tx.streamingService.update({
+        where: { id: serviceId },
+        data: { usedSlots },
+      });
+    }
+
+    const subscriptions = await tx.userSubscription.deleteMany({ where: { userId: user.id } });
+    await tx.user.delete({ where: { id: user.id } });
+
+    return {
+      accessLogs: accessLogs.count,
+      cartItems: cartItems.count,
+      couponGrants: couponGrants.count,
+      emailTokens: emailTokens.count,
+      inviteRewards: inviteRewards.count,
+      nodeClients: nodeClients.count,
+      notifications: notifications.count,
+      orders: orders.count,
+      riskEvents: riskEvents.count,
+      streamingSlots: streamingSlots.count,
+      subscriptions: subscriptions.count,
+      supportReplies: supportReplies.count,
+      supportTickets: supportTickets.count,
+      trafficLogs: trafficLogs.count,
+    };
+  });
+
   await recordAuditLog({
     actor: actorFromSession(session),
-    action: "user.delete",
+    action: "user.force_delete",
     targetType: "User",
     targetId: user.id,
     targetLabel: user.email,
-    message: `删除用户 ${user.email}`,
+    message: `强制删除用户 ${user.email} 及其名下业务数据`,
+    metadata: {
+      beforeDeleteCounts: user._count,
+      deleted,
+    },
   });
   revalidatePath("/admin/users");
   revalidatePath(`/admin/users/${user.id}`);
+  revalidatePath("/admin/subscriptions");
+  revalidatePath("/admin/orders");
+  revalidatePath("/admin/support");
+  revalidatePath("/admin/traffic");
+  revalidatePath("/admin/subscription-risk");
 }
 
 export async function batchUpdateUserStatus(formData: FormData) {
