@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { rateLimit } from "@/lib/rate-limit";
 import { requireAdmin } from "@/lib/require-auth";
 import { actorFromSession, recordAuditLog } from "@/services/audit";
 import { getAppConfig } from "@/services/app-config";
@@ -38,6 +39,9 @@ const settingsSchema = z.object({
   smtpFromEmail: z.string().trim().email("发件邮箱格式不正确").optional().or(z.literal("")),
 });
 
+const SMTP_TEST_LIMIT = 5;
+const SMTP_TEST_WINDOW_SECONDS = 10 * 60;
+
 const smtpTestEmailSchema = z.string().trim().email("请输入正确的测试邮箱");
 const smtpTestSettingsSchema = settingsSchema.extend({
   smtpTestEmail: smtpTestEmailSchema,
@@ -60,6 +64,18 @@ function formatActionError(error: unknown, fallback: string) {
     return error.trim();
   }
   return fallback;
+}
+
+async function assertSmtpTestRateLimit(userId: string) {
+  const { success } = await rateLimit(
+    `ratelimit:smtp-test:${userId}`,
+    SMTP_TEST_LIMIT,
+    SMTP_TEST_WINDOW_SECONDS,
+  );
+
+  if (!success) {
+    throw new Error("测试发信过于频繁，请稍后再试");
+  }
 }
 
 function buildSettingsUpdate(parsed: z.infer<typeof settingsSchema>, current: Awaited<ReturnType<typeof getAppConfig>>) {
@@ -164,9 +180,11 @@ export async function saveAppSettings(formData: FormData): Promise<SettingsActio
 export async function testSmtpSettings(formData: FormData): Promise<SmtpTestActionResult> {
   let parsed: z.infer<typeof smtpTestSettingsSchema>;
   let next: Awaited<ReturnType<typeof persistAppSettings>>;
+  let adminUserId = "";
 
   try {
     const session = await requireAdmin();
+    adminUserId = session.user.id;
     parsed = smtpTestSettingsSchema.parse(Object.fromEntries(formData));
     next = await persistAppSettings(session, parsed, "测试发信前更新系统设置");
   } catch (error) {
@@ -175,6 +193,16 @@ export async function testSmtpSettings(formData: FormData): Promise<SmtpTestActi
 
   if (!next.smtpEnabled) {
     return { ok: false, settingsSaved: true, error: "测试发信前请先开启邮件服务" };
+  }
+
+  try {
+    await assertSmtpTestRateLimit(adminUserId);
+  } catch (error) {
+    return {
+      ok: false,
+      settingsSaved: true,
+      error: formatActionError(error, "测试发信过于频繁，请稍后再试"),
+    };
   }
 
   try {

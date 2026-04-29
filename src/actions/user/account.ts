@@ -6,6 +6,7 @@ import { headers } from "next/headers";
 import { randomBytes } from "crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { rateLimit } from "@/lib/rate-limit";
 import { normalizeEmailAddress, sendEmailChangeConfirmation } from "@/services/email";
 import { requireAuth } from "@/lib/require-auth";
 
@@ -22,6 +23,28 @@ const passwordSchema = z.object({
 const emailChangeSchema = z.object({
   email: z.string().trim().email("请输入正确的新邮箱"),
 });
+
+const EMAIL_CHANGE_LIMIT = 3;
+const EMAIL_CHANGE_WINDOW_SECONDS = 10 * 60;
+
+async function assertEmailChangeRateLimit(userId: string, email: string) {
+  const [userLimit, targetLimit] = await Promise.all([
+    rateLimit(
+      `ratelimit:account-email-change:user:${userId}`,
+      EMAIL_CHANGE_LIMIT,
+      EMAIL_CHANGE_WINDOW_SECONDS,
+    ),
+    rateLimit(
+      `ratelimit:account-email-change:email:${email}`,
+      EMAIL_CHANGE_LIMIT,
+      EMAIL_CHANGE_WINDOW_SECONDS,
+    ),
+  ]);
+
+  if (!userLimit.success || !targetLimit.success) {
+    throw new Error("请求过于频繁，请稍后再试");
+  }
+}
 
 async function generateUniqueInviteCode(): Promise<string> {
   for (let i = 0; i < 10; i += 1) {
@@ -70,6 +93,8 @@ export async function requestAccountEmailChange(formData: FormData) {
   if (existing) {
     throw new Error("这个邮箱已经被其他账户使用");
   }
+
+  await assertEmailChangeRateLimit(session.user.id, email);
 
   const headerList = await headers();
   await sendEmailChangeConfirmation({

@@ -12,14 +12,36 @@ const emailSchema = z.object({
   email: z.string().trim().email("请输入正确的邮箱"),
 });
 
+const EMAIL_ACTION_LIMIT = 3;
+const EMAIL_ACTION_IP_LIMIT = 10;
+const EMAIL_ACTION_WINDOW_SECONDS = 10 * 60;
+
 const resetPasswordSchema = z.object({
   token: z.string().trim().min(20, "重设链接无效"),
   password: z.string().min(6, "新密码至少 6 位"),
   confirmPassword: z.string().min(6, "确认密码至少 6 位"),
 });
 
-async function requestContext() {
+type HeaderList = Awaited<ReturnType<typeof headers>>;
+
+function getClientIp(headerList: HeaderList) {
+  return headerList.get("x-forwarded-for")?.split(",")[0]?.trim()
+    || headerList.get("x-real-ip")?.trim()
+    || "unknown";
+}
+
+async function requestEmailContext(action: string, email: string) {
   const headerList = await headers();
+  const ip = getClientIp(headerList);
+  const [emailLimit, ipLimit] = await Promise.all([
+    rateLimit(`ratelimit:${action}:${email}`, EMAIL_ACTION_LIMIT, EMAIL_ACTION_WINDOW_SECONDS),
+    rateLimit(`ratelimit:${action}:ip:${ip}`, EMAIL_ACTION_IP_LIMIT, EMAIL_ACTION_WINDOW_SECONDS),
+  ]);
+
+  if (!emailLimit.success || !ipLimit.success) {
+    throw new Error("请求过于频繁，请稍后再试");
+  }
+
   return { headers: headerList };
 }
 
@@ -33,10 +55,7 @@ async function assertMailAvailable() {
 export async function requestPasswordReset(formData: FormData) {
   const parsed = emailSchema.parse(Object.fromEntries(formData));
   const email = normalizeEmailAddress(parsed.email);
-  const { success } = await rateLimit(`ratelimit:password-reset:${email}`, 3, 10 * 60);
-  if (!success) {
-    throw new Error("请求过于频繁，请稍后再试");
-  }
+  const context = await requestEmailContext("password-reset", email);
 
   await assertMailAvailable();
   const user = await prisma.user.findUnique({
@@ -48,7 +67,7 @@ export async function requestPasswordReset(formData: FormData) {
     await sendPasswordResetEmail({
       userId: user.id,
       email: user.email,
-      ...(await requestContext()),
+      ...context,
     });
   }
 }
@@ -56,10 +75,7 @@ export async function requestPasswordReset(formData: FormData) {
 export async function requestRegistrationVerification(formData: FormData) {
   const parsed = emailSchema.parse(Object.fromEntries(formData));
   const email = normalizeEmailAddress(parsed.email);
-  const { success } = await rateLimit(`ratelimit:email-verify:${email}`, 3, 10 * 60);
-  if (!success) {
-    throw new Error("请求过于频繁，请稍后再试");
-  }
+  const context = await requestEmailContext("email-verify", email);
 
   await assertMailAvailable();
   const user = await prisma.user.findUnique({
@@ -71,7 +87,7 @@ export async function requestRegistrationVerification(formData: FormData) {
     await sendRegistrationVerificationEmail({
       userId: user.id,
       email: user.email,
-      ...(await requestContext()),
+      ...context,
     });
   }
 }
