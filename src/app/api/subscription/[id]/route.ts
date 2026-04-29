@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { generateSubscriptionContent } from "@/services/subscription";
+import {
+  buildSubscriptionUserInfo,
+  generateSubscriptionContent,
+  getSubscriptionContentType,
+  getSubscriptionFilename,
+  resolveSubscriptionFormat,
+} from "@/services/subscription";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(
@@ -26,11 +32,24 @@ export async function GET(
     return NextResponse.json({ error: "Subscription inactive" }, { status: 403 });
   }
 
-  const content = await generateSubscriptionContent(id);
+  const format = resolveSubscriptionFormat(url.searchParams, req.headers.get("user-agent"));
+  const content = await generateSubscriptionContent(id, format);
+  const userInfo = buildSubscriptionUserInfo({
+    upload: 0,
+    download: sub.trafficUsed,
+    total: sub.trafficLimit,
+    expire: sub.endDate,
+  });
+  const headers = new Headers({
+    "Content-Type": getSubscriptionContentType(format),
+    "Content-Disposition": `attachment; filename="${getSubscriptionFilename("jboard-sub", format)}"`,
+    "Cache-Control": "no-store",
+    "profile-update-interval": "12",
+    "profile-web-page-url": `${url.origin}/subscriptions/${id}`,
+  });
+  if (userInfo) headers.set("Subscription-Userinfo", userInfo);
+
   return new Response(content, {
-    headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Content-Disposition": `attachment; filename="jboard-sub.txt"`,
-    },
+    headers,
   });
 }

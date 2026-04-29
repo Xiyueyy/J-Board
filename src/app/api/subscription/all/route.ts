@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import {
+  buildSubscriptionUserInfo,
   generateAggregateSubscriptionContent,
+  getSubscriptionContentType,
+  getSubscriptionFilename,
+  resolveSubscriptionFormat,
   verifyAggregateSubscriptionToken,
 } from "@/services/subscription";
+import { prisma } from "@/lib/prisma";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -17,12 +22,47 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Invalid subscription token" }, { status: 401 });
   }
 
-  const content = await generateAggregateSubscriptionContent(userId);
+  const format = resolveSubscriptionFormat(url.searchParams, req.headers.get("user-agent"));
+  const activeProxyWhere = {
+    userId,
+    status: "ACTIVE" as const,
+    endDate: { gt: new Date() },
+    plan: { type: "PROXY" as const },
+    nodeClient: { isNot: null },
+  };
+  const [content, statsRows] = await Promise.all([
+    generateAggregateSubscriptionContent(userId, format),
+    prisma.userSubscription.findMany({
+      where: activeProxyWhere,
+      select: {
+        trafficUsed: true,
+        trafficLimit: true,
+        endDate: true,
+      },
+    }),
+  ]);
+  const hasUnlimitedTraffic = statsRows.some((row) => row.trafficLimit == null);
+  const userInfo = buildSubscriptionUserInfo({
+    upload: 0,
+    download: statsRows.reduce((sum, row) => sum + row.trafficUsed, BigInt(0)),
+    total: hasUnlimitedTraffic
+      ? null
+      : statsRows.reduce((sum, row) => sum + (row.trafficLimit ?? BigInt(0)), BigInt(0)),
+    expire: statsRows.reduce<Date | null>((earliest, row) => {
+      if (!earliest || row.endDate < earliest) return row.endDate;
+      return earliest;
+    }, null),
+  });
+  const headers = new Headers({
+    "Content-Type": getSubscriptionContentType(format),
+    "Content-Disposition": `attachment; filename="${getSubscriptionFilename("jboard-all-sub", format)}"`,
+    "Cache-Control": "no-store",
+    "profile-update-interval": "12",
+    "profile-web-page-url": `${url.origin}/subscriptions`,
+  });
+  if (userInfo) headers.set("Subscription-Userinfo", userInfo);
+
   return new Response(content, {
-    headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Content-Disposition": 'attachment; filename="jboard-all-sub.txt"',
-      "Cache-Control": "no-store",
-    },
+    headers,
   });
 }
