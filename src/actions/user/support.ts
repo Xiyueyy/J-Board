@@ -17,26 +17,45 @@ const createTicketSchema = z.object({
   category: z.string().trim().optional(),
   priority: z.enum(["LOW", "NORMAL", "HIGH", "URGENT"]).default("NORMAL"),
   body: z.string().trim().min(1, "内容不能为空"),
+  riskEventId: z.string().trim().optional(),
 });
 
 export async function createSupportTicket(formData: FormData) {
-  const session = await requireAuth();
+  const session = await requireAuth({ allowDuringRiskRestriction: true });
   const data = createTicketSchema.parse(Object.fromEntries(formData));
   const attachments = parseSupportAttachments(formData.getAll("attachments"));
+  const riskEvent = data.riskEventId
+    ? await prisma.subscriptionRiskEvent.findFirst({
+        where: {
+          id: data.riskEventId,
+          userId: session.user.id,
+          reportSentAt: { not: null },
+        },
+        select: { id: true, message: true },
+      })
+    : null;
+
+  if (data.riskEventId && !riskEvent) {
+    throw new Error("关联风控事件不存在或不属于当前用户");
+  }
+
+  const body = riskEvent
+    ? data.body + "\n\n关联订阅风控事件：" + riskEvent.id + "\n系统判定：" + riskEvent.message
+    : data.body;
 
   const ticket = await prisma.supportTicket.create({
     data: {
       userId: session.user.id,
       subject: data.subject,
-      category: data.category || null,
-      priority: data.priority,
+      category: data.category || (riskEvent ? "订阅风控" : null),
+      priority: riskEvent ? "HIGH" : data.priority,
       status: "OPEN",
       lastReplyAt: new Date(),
       replies: {
         create: {
           authorUserId: session.user.id,
           isAdmin: false,
-          body: data.body,
+          body,
         },
       },
     },
@@ -66,7 +85,7 @@ export async function createSupportTicket(formData: FormData) {
       type: "SYSTEM",
       level: "INFO",
       title: "新工单待处理",
-      body: `收到新工单：${data.subject}`,
+      body: riskEvent ? `收到订阅风控复核工单：${data.subject}` : `收到新工单：${data.subject}`,
       link: `/admin/support/${ticket.id}`,
       dedupeKey: `support-created:${ticket.id}:${admin.id}`,
     });
@@ -78,7 +97,7 @@ export async function createSupportTicket(formData: FormData) {
 }
 
 export async function replySupportTicket(ticketId: string, formData: FormData) {
-  const session = await requireAuth();
+  const session = await requireAuth({ allowDuringRiskRestriction: true });
   const body = String(formData.get("body") || "").trim();
   const attachments = parseSupportAttachments(formData.getAll("attachments"));
   if (!body) {
@@ -154,7 +173,7 @@ export async function replySupportTicket(ticketId: string, formData: FormData) {
 }
 
 export async function closeSupportTicket(ticketId: string) {
-  const session = await requireAuth();
+  const session = await requireAuth({ allowDuringRiskRestriction: true });
   const ticket = await prisma.supportTicket.findFirst({
     where: {
       id: ticketId,
@@ -199,7 +218,7 @@ export async function closeSupportTicket(ticketId: string) {
 }
 
 export async function deleteSupportTicket(ticketId: string) {
-  const session = await requireAuth();
+  const session = await requireAuth({ allowDuringRiskRestriction: true });
   const ticket = await prisma.supportTicket.findFirst({
     where: {
       id: ticketId,

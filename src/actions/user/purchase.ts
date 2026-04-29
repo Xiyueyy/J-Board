@@ -1,7 +1,6 @@
 "use server";
 
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireAuth } from "@/lib/require-auth";
 import { prisma } from "@/lib/prisma";
 import { getErrorMessage } from "@/lib/errors";
 import {
@@ -114,8 +113,7 @@ export async function purchaseProxy(
   trafficGb: number,
   selectedInboundId: string,
 ): Promise<string> {
-  const session = await getServerSession(authOptions);
-  if (!session) throw new Error("未登录");
+  const session = await requireAuth();
   await assertNoPendingOrder(session.user.id);
 
   const plan = await prisma.subscriptionPlan.findUniqueOrThrow({
@@ -208,8 +206,7 @@ export async function purchaseProxy(
 }
 
 export async function purchaseStreaming(planId: string): Promise<string> {
-  const session = await getServerSession(authOptions);
-  if (!session) throw new Error("未登录");
+  const session = await requireAuth();
   await assertNoPendingOrder(session.user.id);
 
   const plan = await prisma.subscriptionPlan.findUniqueOrThrow({
@@ -257,8 +254,7 @@ export async function purchaseRenewal(
   renewalDays?: number,
 ): Promise<PurchaseRenewalResult> {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) throw new Error("未登录");
+    const session = await requireAuth();
     await assertNoPendingOrder(session.user.id);
 
     const subscription = await prisma.userSubscription.findFirst({
@@ -299,8 +295,7 @@ export async function purchaseTrafficTopup(
   subscriptionId: string,
   trafficGb: number,
 ): Promise<string> {
-  const session = await getServerSession(authOptions);
-  if (!session) throw new Error("未登录");
+  const session = await requireAuth();
   await assertNoPendingOrder(session.user.id);
 
   if (!Number.isFinite(trafficGb) || trafficGb <= 0 || !Number.isInteger(trafficGb)) {
@@ -353,8 +348,7 @@ export async function queryPlanNextAvailability(planId: string): Promise<{
   message: string;
   nextAvailableAt: string | null;
 }> {
-  const session = await getServerSession(authOptions);
-  if (!session) throw new Error("未登录");
+  const session = await requireAuth();
 
   const plan = await prisma.subscriptionPlan.findUniqueOrThrow({
     where: { id: planId },

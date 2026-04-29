@@ -17,6 +17,7 @@ import {
 } from "@/components/shared/domain-badges";
 import { StatusBadge, type StatusTone } from "@/components/shared/status-badge";
 import { SubscriptionRiskReviewActions } from "@/components/subscriptions/subscription-risk-review-actions";
+import { SubscriptionRiskGeoDetails } from "./subscription-risk-geo-details";
 import { formatDate, formatDateShort } from "@/lib/utils";
 import type { SubscriptionRiskEventRow } from "../risk-data";
 
@@ -58,6 +59,17 @@ function reviewStatusTone(status: SubscriptionRiskEvent["reviewStatus"]): Status
   return "warning";
 }
 
+function finalActionLabel(action: SubscriptionRiskEvent["finalAction"]) {
+  switch (action) {
+    case "RESTORE_ACCESS":
+      return "已解除限制";
+    case "KEEP_RESTRICTED":
+      return "保持封禁/暂停";
+    default:
+      return null;
+  }
+}
+
 function EventScope({ event }: { event: SubscriptionRiskEventRow }) {
   if (!event.subscription) {
     return (
@@ -91,7 +103,9 @@ function UserCell({ event }: { event: SubscriptionRiskEventRow }) {
 
   return (
     <div className="space-y-1">
-      <p className="max-w-56 break-all font-medium">{event.user.email}</p>
+      <Link href={"/admin/users/" + event.user.id} className="block max-w-56 break-all font-medium text-foreground hover:underline">
+        {event.user.email}
+      </Link>
       <p className="max-w-52 break-words text-xs text-muted-foreground">{event.user.name || "未设置昵称"}</p>
       <UserStatusBadge status={event.user.status} />
     </div>
@@ -138,11 +152,14 @@ export function SubscriptionRiskTable({ events }: { events: SubscriptionRiskEven
                 </div>
               </DataTableCell>
               <DataTableCell>
-                <div className="space-y-1 text-sm">
-                  <p className="font-mono text-xs">{event.ip || "未知 IP"}</p>
-                  <p className="text-xs text-muted-foreground">
-                    城市 {event.cityCount} · 省/地区 {event.regionCount} · 国家 {event.countryCount}
-                  </p>
+                <div className="space-y-2">
+                  <div className="space-y-1 text-sm">
+                    <p className="font-mono text-xs">{event.ip || "未知 IP"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      城市 {event.cityCount} · 省/地区 {event.regionCount} · 国家 {event.countryCount}
+                    </p>
+                  </div>
+                  <SubscriptionRiskGeoDetails summary={event.geoSummary} />
                 </div>
               </DataTableCell>
               <DataTableCell>
@@ -150,6 +167,17 @@ export function SubscriptionRiskTable({ events }: { events: SubscriptionRiskEven
                   <StatusBadge tone={reviewStatusTone(event.reviewStatus)}>
                     {reviewStatusLabel(event.reviewStatus)}
                   </StatusBadge>
+                  {(event.reportSentAt || event.userRestrictionActive || event.finalAction) && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {event.reportSentAt && <StatusBadge tone="info">已发送报告</StatusBadge>}
+                      {event.userRestrictionActive && <StatusBadge tone="danger">用户端限制中</StatusBadge>}
+                      {finalActionLabel(event.finalAction) && (
+                        <StatusBadge tone={event.finalAction === "RESTORE_ACCESS" ? "success" : "warning"}>
+                          {finalActionLabel(event.finalAction)}
+                        </StatusBadge>
+                      )}
+                    </div>
+                  )}
                   {(event.reviewedByEmail || event.reviewNote) && (
                     <div className="max-w-52 text-xs leading-5 text-muted-foreground">
                       {event.reviewedByEmail && <p className="break-all">{event.reviewedByEmail}</p>}
@@ -165,6 +193,11 @@ export function SubscriptionRiskTable({ events }: { events: SubscriptionRiskEven
                     eventId={event.id}
                     reviewStatus={event.reviewStatus}
                     canRestoreSubscription={event.canRestoreSubscription}
+                    restorableSubscriptionCount={event.restorableSubscriptionCount}
+                    riskReport={event.riskReport}
+                    reportSentAt={event.reportSentAt}
+                    userRestrictionActive={event.userRestrictionActive}
+                    finalAction={event.finalAction}
                   />
                 </div>
               </DataTableCell>

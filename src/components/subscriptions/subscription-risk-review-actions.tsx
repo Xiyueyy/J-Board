@@ -1,11 +1,26 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { SubscriptionRiskReviewStatus } from "@prisma/client";
-import { CheckCircle2, RotateCcw, ShieldCheck } from "lucide-react";
+import type {
+  SubscriptionRiskFinalAction,
+  SubscriptionRiskReviewStatus,
+} from "@prisma/client";
+import {
+  FileText,
+  LockKeyhole,
+  RotateCcw,
+  Send,
+  ShieldCheck,
+  UnlockKeyhole,
+} from "lucide-react";
 import { toast } from "sonner";
-import { updateSubscriptionRiskReview } from "@/actions/admin/subscription-risk";
+import {
+  finalizeSubscriptionRiskDecision,
+  generateSubscriptionRiskReport,
+  sendSubscriptionRiskReport,
+  updateSubscriptionRiskReview,
+} from "@/actions/admin/subscription-risk";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,10 +39,10 @@ interface RiskReviewMode {
   label: string;
   title: string;
   description: string;
-  icon: "ack" | "resolve" | "open";
+  icon: "ack" | "open";
 }
 
-const modes: Record<SubscriptionRiskReviewStatus, RiskReviewMode> = {
+const modes: Record<"OPEN" | "ACKNOWLEDGED", RiskReviewMode> = {
   OPEN: {
     status: "OPEN",
     label: "重新打开",
@@ -39,76 +54,193 @@ const modes: Record<SubscriptionRiskReviewStatus, RiskReviewMode> = {
     status: "ACKNOWLEDGED",
     label: "确认跟进",
     title: "确认正在处理",
-    description: "适合先记录已看到、正在核查，暂不恢复或关闭事件。",
+    description: "适合先记录已看到、正在核查，暂不解除或关闭事件。",
     icon: "ack",
-  },
-  RESOLVED: {
-    status: "RESOLVED",
-    label: "标记解决",
-    title: "标记风控事件已解决",
-    description: "适合已联系用户、确认误判或已经完成必要处置后关闭事件。",
-    icon: "resolve",
   },
 };
 
+type DialogState =
+  | { type: "review"; mode: RiskReviewMode }
+  | { type: "final"; action: SubscriptionRiskFinalAction }
+  | { type: "report" }
+  | null;
+
 function ModeIcon({ icon }: { icon: RiskReviewMode["icon"] }) {
   if (icon === "open") return <RotateCcw className="size-4" />;
-  if (icon === "resolve") return <CheckCircle2 className="size-4" />;
   return <ShieldCheck className="size-4" />;
+}
+
+function finalActionCopy(action: SubscriptionRiskFinalAction, restorableSubscriptionCount: number) {
+  if (action === "RESTORE_ACCESS") {
+    return {
+      icon: <UnlockKeyhole className="size-4" />,
+      label: "解除限制",
+      title: "确认解除风控限制？",
+      description: restorableSubscriptionCount > 0
+        ? "会恢复可恢复的暂停订阅，并关闭用户端强制通知。"
+        : "会关闭用户端强制通知，并把事件记录为已解除；当前没有可自动恢复的暂停订阅。",
+      confirm: "确认解除",
+    };
+  }
+
+  return {
+    icon: <LockKeyhole className="size-4" />,
+    label: "保持封禁/暂停",
+    title: "确认保持封禁或暂停？",
+    description: "订阅和用户限制会维持当前处置，适合确认订阅链接外泄、公共代理滥用或用户无法解释异常访问来源的情况。",
+    confirm: "保持限制",
+  };
 }
 
 export function SubscriptionRiskReviewActions({
   eventId,
   reviewStatus,
   canRestoreSubscription = false,
+  restorableSubscriptionCount = 0,
+  riskReport = null,
+  reportSentAt = null,
+  userRestrictionActive = false,
+  finalAction = null,
 }: {
   eventId: string;
   reviewStatus: SubscriptionRiskReviewStatus;
   canRestoreSubscription?: boolean;
+  restorableSubscriptionCount?: number;
+  riskReport?: string | null;
+  reportSentAt?: Date | string | null;
+  userRestrictionActive?: boolean;
+  finalAction?: SubscriptionRiskFinalAction | null;
 }) {
   const router = useRouter();
-  const [mode, setMode] = useState<RiskReviewMode | null>(null);
+  const [dialog, setDialog] = useState<DialogState>(null);
   const [note, setNote] = useState("");
-  const [restoreSubscription, setRestoreSubscription] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [notifyUser, setNotifyUser] = useState(Boolean(reportSentAt || userRestrictionActive));
+  const [reportPreview, setReportPreview] = useState(riskReport ?? "");
+  const [pending, startTransition] = useTransition();
 
   const availableModes = useMemo(() => {
-    return [modes.ACKNOWLEDGED, modes.RESOLVED, modes.OPEN].filter((item) => item.status !== reviewStatus);
+    return [modes.ACKNOWLEDGED, modes.OPEN].filter((item) => item.status !== reviewStatus);
   }, [reviewStatus]);
 
-  function openDialog(nextMode: RiskReviewMode) {
-    setMode(nextMode);
+  const activeFinalCopy = dialog?.type === "final"
+    ? finalActionCopy(dialog.action, restorableSubscriptionCount)
+    : null;
+
+  function openReviewDialog(mode: RiskReviewMode) {
+    setDialog({ type: "review", mode });
     setNote("");
-    setRestoreSubscription(nextMode.status === "RESOLVED" && canRestoreSubscription);
   }
 
-  async function submit() {
-    if (!mode) return;
+  function openFinalDialog(action: SubscriptionRiskFinalAction) {
+    setDialog({ type: "final", action });
+    setNote("");
+    setNotifyUser(action === "KEEP_RESTRICTED" ? true : Boolean(reportSentAt || userRestrictionActive));
+  }
 
-    setLoading(true);
-    try {
-      await updateSubscriptionRiskReview(eventId, mode.status, note, {
-        restoreSubscription: mode.status === "RESOLVED" && restoreSubscription,
-      });
-      toast.success("风控事件已更新");
-      setMode(null);
-      router.refresh();
-    } catch (error) {
-      toast.error(getErrorMessage(error, "更新风控事件失败"));
-    } finally {
-      setLoading(false);
-    }
+  function handleGenerateReport(openAfterGenerate = true) {
+    startTransition(async () => {
+      try {
+        const result = await generateSubscriptionRiskReport(eventId);
+        setReportPreview(result.report);
+        toast.success("风险报告已生成");
+        if (openAfterGenerate) setDialog({ type: "report" });
+        router.refresh();
+      } catch (error) {
+        toast.error(getErrorMessage(error, "生成风险报告失败"));
+      }
+    });
+  }
+
+  function handleSendReport() {
+    startTransition(async () => {
+      try {
+        await sendSubscriptionRiskReport(eventId);
+        toast.success("已发送用户端强制通知");
+        router.refresh();
+      } catch (error) {
+        toast.error(getErrorMessage(error, "发送用户通知失败"));
+      }
+    });
+  }
+
+  function submitReview() {
+    if (dialog?.type !== "review") return;
+
+    startTransition(async () => {
+      try {
+        await updateSubscriptionRiskReview(eventId, dialog.mode.status, note);
+        toast.success("风控事件已更新");
+        setDialog(null);
+        router.refresh();
+      } catch (error) {
+        toast.error(getErrorMessage(error, "更新风控事件失败"));
+      }
+    });
+  }
+
+  function submitFinalDecision() {
+    if (dialog?.type !== "final") return;
+
+    startTransition(async () => {
+      try {
+        await finalizeSubscriptionRiskDecision(eventId, dialog.action, note, {
+          notifyUser: dialog.action === "KEEP_RESTRICTED" && notifyUser,
+        });
+        toast.success(dialog.action === "RESTORE_ACCESS" ? "已解除限制" : "已保持限制并记录处置");
+        setDialog(null);
+        router.refresh();
+      } catch (error) {
+        toast.error(getErrorMessage(error, "保存最终处置失败"));
+      }
+    });
   }
 
   return (
     <>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex max-w-72 flex-wrap justify-end gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={pending}
+          onClick={() => handleGenerateReport(true)}
+        >
+          <FileText className="size-4" />
+          {reportPreview ? "重生成报告" : "生成报告"}
+        </Button>
+        {reportPreview && (
+          <Button size="sm" variant="ghost" disabled={pending} onClick={() => setDialog({ type: "report" })}>
+            查看报告
+          </Button>
+        )}
+        <Button size="sm" variant="outline" disabled={pending} onClick={handleSendReport}>
+          <Send className="size-4" />
+          {reportSentAt ? "重新发送" : "发送用户"}
+        </Button>
+        <Button
+          size="sm"
+          variant={canRestoreSubscription || userRestrictionActive ? "default" : "outline"}
+          disabled={pending || (!canRestoreSubscription && !userRestrictionActive && reviewStatus === "RESOLVED")}
+          onClick={() => openFinalDialog("RESTORE_ACCESS")}
+        >
+          <UnlockKeyhole className="size-4" />
+          解除限制
+        </Button>
+        <Button
+          size="sm"
+          variant="destructive"
+          disabled={pending || finalAction === "KEEP_RESTRICTED"}
+          onClick={() => openFinalDialog("KEEP_RESTRICTED")}
+        >
+          <LockKeyhole className="size-4" />
+          保持封禁
+        </Button>
         {availableModes.map((item) => (
           <Button
             key={item.status}
             size="sm"
-            variant={item.status === "RESOLVED" ? "default" : "outline"}
-            onClick={() => openDialog(item)}
+            variant="ghost"
+            disabled={pending}
+            onClick={() => openReviewDialog(item)}
           >
             <ModeIcon icon={item.icon} />
             {item.label}
@@ -116,54 +248,124 @@ export function SubscriptionRiskReviewActions({
         ))}
       </div>
 
-      <Dialog open={mode != null} onOpenChange={(open) => !loading && !open && setMode(null)}>
-        <DialogContent className="sm:max-w-lg">
-          {mode && (
+      <Dialog open={dialog != null} onOpenChange={(open) => !pending && !open && setDialog(null)}>
+        <DialogContent className={dialog?.type === "report" ? "sm:max-w-3xl" : "sm:max-w-lg"}>
+          {dialog?.type === "review" && (
             <>
               <DialogHeader>
                 <div className="mb-1 flex size-9 items-center justify-center rounded-lg border border-primary/15 bg-primary/10 text-primary">
-                  <ModeIcon icon={mode.icon} />
+                  <ModeIcon icon={dialog.mode.icon} />
                 </div>
-                <DialogTitle>{mode.title}</DialogTitle>
-                <DialogDescription>{mode.description}</DialogDescription>
+                <DialogTitle>{dialog.mode.title}</DialogTitle>
+                <DialogDescription>{dialog.mode.description}</DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-2">
+                <Label htmlFor={"risk-note-" + eventId}>处理备注</Label>
+                <Textarea
+                  id={"risk-note-" + eventId}
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  maxLength={1000}
+                  placeholder="例如：已联系用户确认是出差；或确认订阅链接外泄，继续限制。"
+                />
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setDialog(null)} disabled={pending}>
+                  先不处理
+                </Button>
+                <Button type="button" onClick={submitReview} disabled={pending}>
+                  {pending ? "保存中..." : dialog.mode.label}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {dialog?.type === "final" && activeFinalCopy && (
+            <>
+              <DialogHeader>
+                <div className="mb-1 flex size-9 items-center justify-center rounded-lg border border-primary/15 bg-primary/10 text-primary">
+                  {activeFinalCopy.icon}
+                </div>
+                <DialogTitle>{activeFinalCopy.title}</DialogTitle>
+                <DialogDescription>{activeFinalCopy.description}</DialogDescription>
               </DialogHeader>
 
               <div className="space-y-3">
-                <div className="space-y-2">
-                  <Label htmlFor={`risk-note-${eventId}`}>处理备注</Label>
-                  <Textarea
-                    id={`risk-note-${eventId}`}
-                    value={note}
-                    onChange={(event) => setNote(event.target.value)}
-                    maxLength={1000}
-                    placeholder="例如：已联系用户确认是出差；或确认订阅链接外泄，已重置/暂停处理。"
-                  />
-                </div>
-
-                {mode.status === "RESOLVED" && canRestoreSubscription && (
+                {dialog.action === "RESTORE_ACCESS" && restorableSubscriptionCount > 0 && (
+                  <div className="rounded-lg border border-primary/20 bg-primary/8 p-3 text-sm leading-6 text-primary">
+                    将尝试恢复 {restorableSubscriptionCount} 个仍在有效期内的暂停代理订阅。
+                  </div>
+                )}
+                {dialog.action === "KEEP_RESTRICTED" && (
                   <label className="flex items-start gap-3 rounded-lg border border-border/70 bg-muted/30 p-3 text-sm leading-6">
                     <input
                       type="checkbox"
                       className="mt-1"
-                      checked={restoreSubscription}
-                      onChange={(event) => setRestoreSubscription(event.target.checked)}
+                      checked={notifyUser}
+                      onChange={(event) => setNotifyUser(event.target.checked)}
                     />
                     <span>
-                      同时恢复这个已暂停订阅
+                      同时发送用户端强制通知
                       <span className="block text-xs text-muted-foreground">
-                        会同步重新启用 3x-ui 客户端；如果远端面板失败，事件不会被误标记为已解决。
+                        用户会看到全屏不可关闭说明，只能进入工单页面联系客服。
                       </span>
                     </span>
                   </label>
                 )}
+                <div className="space-y-2">
+                  <Label htmlFor={"risk-final-note-" + eventId}>最终处理备注</Label>
+                  <Textarea
+                    id={"risk-final-note-" + eventId}
+                    value={note}
+                    onChange={(event) => setNote(event.target.value)}
+                    maxLength={1000}
+                    placeholder="记录最终判断依据，例如：用户提交工单证明为本人出差；或确认链接被多人共享，保持限制。"
+                  />
+                </div>
               </div>
 
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setMode(null)} disabled={loading}>
-                  先不处理
+                <Button type="button" variant="outline" onClick={() => setDialog(null)} disabled={pending}>
+                  返回
                 </Button>
-                <Button type="button" onClick={() => void submit()} disabled={loading}>
-                  {loading ? "保存中..." : mode.label}
+                <Button
+                  type="button"
+                  variant={dialog.action === "KEEP_RESTRICTED" ? "destructive" : "default"}
+                  onClick={submitFinalDecision}
+                  disabled={pending}
+                >
+                  {pending ? "保存中..." : activeFinalCopy.confirm}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {dialog?.type === "report" && (
+            <>
+              <DialogHeader>
+                <div className="mb-1 flex size-9 items-center justify-center rounded-lg border border-primary/15 bg-primary/10 text-primary">
+                  <FileText className="size-4" />
+                </div>
+                <DialogTitle>风险报告总结</DialogTitle>
+                <DialogDescription>
+                  可作为人工复核依据，也可以发送给用户端形成强制通知。
+                </DialogDescription>
+              </DialogHeader>
+              <pre className="max-h-[28rem] overflow-auto whitespace-pre-wrap rounded-lg border border-border/70 bg-muted/30 p-4 text-xs leading-6 text-foreground">
+                {reportPreview || "尚未生成风险报告。"}
+              </pre>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setDialog(null)} disabled={pending}>
+                  关闭
+                </Button>
+                <Button type="button" variant="outline" onClick={() => handleGenerateReport(false)} disabled={pending}>
+                  {pending ? "生成中..." : "重新生成"}
+                </Button>
+                <Button type="button" onClick={handleSendReport} disabled={pending}>
+                  <Send className="size-4" />
+                  发送用户
                 </Button>
               </DialogFooter>
             </>

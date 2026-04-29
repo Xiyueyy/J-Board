@@ -1,6 +1,11 @@
 import type { Prisma, SubscriptionRiskEvent } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { parsePage } from "@/lib/utils";
+import {
+  buildSubscriptionRiskGeoSummary,
+  getSubscriptionRiskAccessLogsForEvent,
+  type SubscriptionRiskGeoSummary,
+} from "@/services/subscription-risk-review";
 
 type RiskUser = {
   id: string;
@@ -24,6 +29,8 @@ export type SubscriptionRiskEventRow = SubscriptionRiskEvent & {
   user: RiskUser | null;
   subscription: RiskSubscription | null;
   canRestoreSubscription: boolean;
+  restorableSubscriptionCount: number;
+  geoSummary: SubscriptionRiskGeoSummary;
 };
 
 async function searchRelatedIds(q: string) {
@@ -102,7 +109,8 @@ export async function getSubscriptionRiskEvents(
   const eventUserIds = Array.from(new Set(events.map((event) => event.userId).filter(Boolean))) as string[];
   const eventSubscriptionIds = Array.from(new Set(events.map((event) => event.subscriptionId).filter(Boolean))) as string[];
 
-  const [users, subscriptions] = await Promise.all([
+  const now = new Date();
+  const [users, subscriptions, restorableSubscriptions, geoSummaries] = await Promise.all([
     eventUserIds.length > 0
       ? prisma.user.findMany({
           where: { id: { in: eventUserIds } },
@@ -121,25 +129,57 @@ export async function getSubscriptionRiskEvents(
           },
         })
       : Promise.resolve([]),
+    eventUserIds.length > 0
+      ? prisma.userSubscription.findMany({
+          where: {
+            userId: { in: eventUserIds },
+            status: "SUSPENDED",
+            endDate: { gt: now },
+            plan: { type: "PROXY" },
+          },
+          select: { id: true, userId: true },
+        })
+      : Promise.resolve([]),
+    Promise.all(
+      events.map(async (event) => {
+        const logs = await getSubscriptionRiskAccessLogsForEvent(event);
+        return [event.id, buildSubscriptionRiskGeoSummary(logs)] as const;
+      }),
+    ),
   ]);
 
   const userById = new Map(users.map((user) => [user.id, user]));
   const subscriptionById = new Map(subscriptions.map((subscription) => [subscription.id, subscription]));
-  const now = new Date();
+  const geoSummaryByEventId = new Map(geoSummaries);
+  const restorableCountByUserId = new Map<string, number>();
+  for (const subscription of restorableSubscriptions) {
+    restorableCountByUserId.set(
+      subscription.userId,
+      (restorableCountByUserId.get(subscription.userId) ?? 0) + 1,
+    );
+  }
+
   const rows: SubscriptionRiskEventRow[] = events.map((event) => {
     const subscription = event.subscriptionId ? subscriptionById.get(event.subscriptionId) ?? null : null;
     const user = subscription?.user ?? (event.userId ? userById.get(event.userId) ?? null : null);
+    const singleRestorable = Boolean(
+      subscription
+        && subscription.status === "SUSPENDED"
+        && subscription.endDate > now
+        && event.reviewStatus !== "RESOLVED",
+    );
+    const aggregateRestorableCount = event.kind === "AGGREGATE" && event.userId
+      ? restorableCountByUserId.get(event.userId) ?? 0
+      : 0;
+    const restorableSubscriptionCount = singleRestorable ? 1 : aggregateRestorableCount;
 
     return {
       ...event,
       user,
       subscription,
-      canRestoreSubscription: Boolean(
-        subscription
-          && subscription.status === "SUSPENDED"
-          && subscription.endDate > now
-          && event.reviewStatus !== "RESOLVED",
-      ),
+      canRestoreSubscription: restorableSubscriptionCount > 0 && event.reviewStatus !== "RESOLVED",
+      restorableSubscriptionCount,
+      geoSummary: geoSummaryByEventId.get(event.id) ?? buildSubscriptionRiskGeoSummary([]),
     };
   });
 

@@ -10,8 +10,22 @@ import { Textarea } from "@/components/ui/textarea";
 
 const ATTACHMENT_ACCEPT = "image/jpeg,image/png,image/webp,image/gif,image/avif";
 
-export function CreateSupportTicketForm() {
-  const [open, setOpen] = useState(false);
+type SupportTicketPreset = {
+  riskEventId?: string;
+  subject?: string;
+  category?: string;
+  priority?: "LOW" | "NORMAL" | "HIGH" | "URGENT";
+  body?: string;
+};
+
+export function CreateSupportTicketForm({
+  defaultOpen = false,
+  preset,
+}: {
+  defaultOpen?: boolean;
+  preset?: SupportTicketPreset;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
 
   if (!open) {
     return (
@@ -29,7 +43,8 @@ export function CreateSupportTicketForm() {
       className="surface-card space-y-5 rounded-[2rem] p-5 sm:p-6"
     >
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">新建工单</h3>
+        <h3 className="text-lg font-semibold">{preset?.riskEventId ? "订阅风控复核工单" : "新建工单"}</h3>
+        {!preset?.riskEventId && (
         <button
           type="button"
           onClick={() => setOpen(false)}
@@ -37,18 +52,19 @@ export function CreateSupportTicketForm() {
         >
           <X className="size-4" />
         </button>
+        )}
       </div>
       <div className="grid gap-5 md:grid-cols-3">
         <div className="space-y-2 md:col-span-2">
           <Label htmlFor="subject">标题</Label>
-          <Input id="subject" name="subject" placeholder="一句话描述遇到的问题" required />
+          <Input id="subject" name="subject" placeholder="一句话描述遇到的问题" defaultValue={preset?.subject} required />
         </div>
         <div className="space-y-2">
           <Label htmlFor="priority">优先级</Label>
           <select
             id="priority"
             name="priority"
-            defaultValue="NORMAL"
+            defaultValue={preset?.priority ?? "NORMAL"}
             className="h-11 w-full px-3 text-sm outline-none"
           >
             <option value="LOW">低</option>
@@ -60,11 +76,11 @@ export function CreateSupportTicketForm() {
       </div>
       <div className="space-y-2">
         <Label htmlFor="category">分类</Label>
-        <Input id="category" name="category" placeholder="例如：支付 / 节点 / 流媒体 / 账户" />
+        <Input id="category" name="category" placeholder="例如：支付 / 节点 / 流媒体 / 账户" defaultValue={preset?.category} />
       </div>
       <div className="space-y-2">
         <Label htmlFor="body">问题描述</Label>
-        <Textarea id="body" name="body" rows={5} placeholder="补充问题背景、错误提示或你已经尝试过的步骤" required />
+        <Textarea id="body" name="body" rows={5} placeholder="补充问题背景、错误提示或你已经尝试过的步骤" defaultValue={preset?.body} required />
       </div>
       <div className="space-y-2">
         <Label htmlFor="attachments">附件（最多 3 张，仅支持图片，每张不超过 3MB）</Label>
@@ -76,6 +92,7 @@ export function CreateSupportTicketForm() {
           accept={ATTACHMENT_ACCEPT}
         />
       </div>
+      {preset?.riskEventId && <input type="hidden" name="riskEventId" value={preset.riskEventId} />}
       <Button type="submit" size="lg">提交工单</Button>
     </form>
   );

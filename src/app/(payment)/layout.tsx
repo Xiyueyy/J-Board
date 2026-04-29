@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
+import { getActiveSubscriptionRiskRestriction } from "@/services/subscription-risk-review";
 
 export const metadata: Metadata = {
   title: {
@@ -24,6 +25,11 @@ export default async function PaymentLayout({
 
   if (session.user.role === "ADMIN") {
     redirect("/admin/dashboard");
+  }
+
+  const restriction = await getActiveSubscriptionRiskRestriction(session.user.id);
+  if (restriction) {
+    redirect("/support?riskEventId=" + restriction.id);
   }
 
   return children;

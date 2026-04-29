@@ -6,6 +6,7 @@ import { jsonError, jsonOk } from "@/lib/api-response";
 import { getPaymentAdapter } from "@/services/payment/factory";
 import { rateLimit } from "@/lib/rate-limit";
 import { getSiteBaseUrl } from "@/services/site-url";
+import { getActiveSubscriptionRiskRestriction } from "@/services/subscription-risk-review";
 import { v4 as uuidv4 } from "uuid";
 
 const createPaymentSchema = z.object({
@@ -30,6 +31,11 @@ export async function POST(req: Request) {
     const session = await getServerSession(authOptions);
     if (!session) {
       return jsonError("未登录", { status: 401 });
+    }
+
+    const restriction = await getActiveSubscriptionRiskRestriction(session.user.id);
+    if (restriction) {
+      return jsonError("账户存在未处理的订阅风控限制，请先新建工单联系客服", { status: 403 });
     }
 
     const { success, remaining } = await rateLimit(

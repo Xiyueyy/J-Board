@@ -37,6 +37,7 @@ export async function createUser(formData: FormData) {
     message: `创建用户 ${user.email}`,
   });
   revalidatePath("/admin/users");
+  revalidatePath(`/admin/users/${user.id}`);
 }
 
 export async function updateUser(id: string, formData: FormData) {
@@ -72,6 +73,7 @@ export async function updateUser(id: string, formData: FormData) {
   });
 
   revalidatePath("/admin/users");
+  revalidatePath(`/admin/users/${user.id}`);
 }
 
 export async function updateUserStatus(id: string, status: "ACTIVE" | "DISABLED" | "BANNED") {
@@ -86,6 +88,7 @@ export async function updateUserStatus(id: string, status: "ACTIVE" | "DISABLED"
     message: `将用户 ${user.email} 状态改为 ${status}`,
   });
   revalidatePath("/admin/users");
+  revalidatePath(`/admin/users/${user.id}`);
 }
 
 export async function deleteUser(id: string) {
@@ -100,6 +103,7 @@ export async function deleteUser(id: string) {
     message: `删除用户 ${user.email}`,
   });
   revalidatePath("/admin/users");
+  revalidatePath(`/admin/users/${user.id}`);
 }
 
 export async function batchUpdateUserStatus(formData: FormData) {

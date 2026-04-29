@@ -129,7 +129,7 @@ export function SubscriptionAccessRiskSection({
           </div>
           <div className="space-y-1 text-sm">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="break-all font-medium">{owner.email}</span>
+              <Link href={"/admin/users/" + owner.id} className="break-all font-medium hover:underline">{owner.email}</Link>
               <UserStatusBadge status={owner.status} />
             </div>
             <p className="text-muted-foreground">{owner.name || "未设置昵称"}</p>
@@ -179,6 +179,11 @@ export function SubscriptionAccessRiskSection({
                     eventId={event.id}
                     reviewStatus={event.reviewStatus}
                     canRestoreSubscription={canRestoreFromEvent(event, subscription)}
+                    restorableSubscriptionCount={canRestoreFromEvent(event, subscription) ? 1 : 0}
+                    riskReport={event.riskReport}
+                    reportSentAt={event.reportSentAt}
+                    userRestrictionActive={event.userRestrictionActive}
+                    finalAction={event.finalAction}
                   />
                 </div>
               </div>

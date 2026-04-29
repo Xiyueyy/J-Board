@@ -60,6 +60,11 @@ enum SubscriptionRiskReviewStatus {
   RESOLVED
 }
 
+enum SubscriptionRiskFinalAction {
+  RESTORE_ACCESS
+  KEEP_RESTRICTED
+}
+
 enum PlanPricingMode {
   TRAFFIC_SLIDER
   FIXED_PACKAGE
@@ -329,28 +334,37 @@ model SubscriptionAccessLog {
 }
 
 model SubscriptionRiskEvent {
-  id              String                       @id @default(cuid())
-  userId          String?
-  subscriptionId  String?
-  kind            SubscriptionAccessKind
-  level           SubscriptionRiskLevel
-  reason          SubscriptionRiskReason
-  ip              String?
-  countryCount    Int                          @default(0)
-  regionCount     Int                          @default(0)
-  cityCount       Int                          @default(0)
-  countryKeys     Json?
-  regionKeys      Json?
-  cityKeys        Json?
-  message         String
-  dedupeKey       String                       @unique
-  windowStartedAt DateTime
-  reviewStatus    SubscriptionRiskReviewStatus @default(OPEN)
-  reviewNote      String?
-  reviewedAt      DateTime?
-  reviewedById    String?
-  reviewedByEmail String?
-  createdAt       DateTime                     @default(now())
+  id                        String                       @id @default(cuid())
+  userId                    String?
+  subscriptionId            String?
+  kind                      SubscriptionAccessKind
+  level                     SubscriptionRiskLevel
+  reason                    SubscriptionRiskReason
+  ip                        String?
+  countryCount              Int                          @default(0)
+  regionCount               Int                          @default(0)
+  cityCount                 Int                          @default(0)
+  countryKeys               Json?
+  regionKeys                Json?
+  cityKeys                  Json?
+  message                   String
+  dedupeKey                 String                       @unique
+  windowStartedAt           DateTime
+  reviewStatus              SubscriptionRiskReviewStatus @default(OPEN)
+  reviewNote                String?
+  reviewedAt                DateTime?
+  reviewedById              String?
+  reviewedByEmail           String?
+  riskReport                String?
+  reportGeneratedAt         DateTime?
+  reportSentAt              DateTime?
+  userRestrictionActive     Boolean                      @default(false)
+  userRestrictionResolvedAt DateTime?
+  finalAction               SubscriptionRiskFinalAction?
+  finalActionAt             DateTime?
+  finalActionById           String?
+  finalActionByEmail        String?
+  createdAt                 DateTime                     @default(now())
 
   @@index([subscriptionId, createdAt])
   @@index([userId, kind, createdAt])
@@ -358,6 +372,8 @@ model SubscriptionRiskEvent {
   @@index([reason, createdAt])
   @@index([reviewStatus, createdAt])
   @@index([reviewedById])
+  @@index([userRestrictionActive, reportSentAt])
+  @@index([finalAction, finalActionAt])
 }
 
 model StreamingService {
