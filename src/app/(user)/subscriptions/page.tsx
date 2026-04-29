@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getActiveSession } from "@/lib/require-auth";
 import { PageHeader, PageShell } from "@/components/shared/page-shell";
 import {
   getActiveSubscriptions,
@@ -22,7 +21,7 @@ export const metadata: Metadata = {
 };
 
 export default async function SubscriptionsPage() {
-  const session = await getServerSession(authOptions);
+  const session = await getActiveSession();
   const [subs, baseUrl] = await Promise.all([
     getUserSubscriptions(session!.user.id),
     getSubscriptionBaseUrl(),

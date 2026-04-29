@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getActiveSession } from "@/lib/require-auth";
 import { Pagination } from "@/components/shared/pagination";
 import { PageHeader, PageShell } from "@/components/shared/page-shell";
 import { UserOrdersTable } from "./_components/user-orders-table";
@@ -16,7 +15,7 @@ export default async function UserOrdersPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const session = await getServerSession(authOptions);
+  const session = await getActiveSession();
   const { orders, total, page, pageSize } = await getUserOrders({
     userId: session!.user.id,
     searchParams: await searchParams,

@@ -22,10 +22,17 @@ interface Props {
   provider: string;
   fields: Field[];
   currentConfig?: Record<string, string>;
+  secretConfigured?: Record<string, boolean>;
   enabled: boolean;
 }
 
-export function PaymentConfigForm({ provider, fields, currentConfig, enabled: initialEnabled }: Props) {
+export function PaymentConfigForm({
+  provider,
+  fields,
+  currentConfig,
+  secretConfigured = {},
+  enabled: initialEnabled,
+}: Props) {
   const [enabled, setEnabled] = useState(initialEnabled);
   const [saving, setSaving] = useState(false);
 
@@ -65,6 +72,13 @@ export function PaymentConfigForm({ provider, fields, currentConfig, enabled: in
 
     try {
       await savePaymentConfig(provider, config, enabled);
+      for (const field of fields) {
+        if (!field.secret) continue;
+        const input = e.currentTarget.elements.namedItem(field.key);
+        if (input instanceof HTMLInputElement) {
+          input.value = "";
+        }
+      }
       toast.success("保存成功");
     } catch (error) {
       toast.error(getErrorMessage(error, "保存失败"));
@@ -99,8 +113,8 @@ export function PaymentConfigForm({ provider, fields, currentConfig, enabled: in
               <Input
                 name={field.key}
                 type={field.secret ? "password" : "text"}
-                placeholder={field.placeholder}
-                defaultValue={currentConfig?.[field.key] || ""}
+                placeholder={field.secret && secretConfigured[field.key] ? "留空保持不变" : field.placeholder}
+                defaultValue={field.secret ? "" : currentConfig?.[field.key] || ""}
               />
             </div>
           ),

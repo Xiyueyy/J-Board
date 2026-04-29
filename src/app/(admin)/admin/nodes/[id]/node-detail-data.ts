@@ -1,8 +1,13 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
+import { sanitizeInboundSettings, sanitizeStreamSettings } from "@/services/node-inbound-sanitize";
 
-const nodeDetailInclude = {
+const nodeDetailSelect = {
+  id: true,
+  name: true,
+  panelUrl: true,
+  status: true,
   inbounds: {
     where: { isActive: true },
     orderBy: { updatedAt: "desc" },
@@ -12,17 +17,25 @@ const nodeDetailInclude = {
       },
     },
   },
-} satisfies Prisma.NodeServerInclude;
+} satisfies Prisma.NodeServerSelect;
 
 export type NodeDetail = Prisma.NodeServerGetPayload<{
-  include: typeof nodeDetailInclude;
+  select: typeof nodeDetailSelect;
 }>;
 
 export async function getNodeDetail(id: string): Promise<NodeDetail> {
   const node = await prisma.nodeServer.findUnique({
     where: { id },
-    include: nodeDetailInclude,
+    select: nodeDetailSelect,
   });
   if (!node) notFound();
-  return node;
+
+  return {
+    ...node,
+    inbounds: node.inbounds.map((inbound) => ({
+      ...inbound,
+      settings: sanitizeInboundSettings(inbound.settings),
+      streamSettings: sanitizeStreamSettings(inbound.streamSettings),
+    })),
+  };
 }

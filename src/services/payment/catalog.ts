@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { decryptIfEncrypted, encrypt, isEncryptedValue } from "@/lib/crypto";
 
 export interface PaymentConfigField {
   key: string;
@@ -105,6 +106,78 @@ function normalizeConfig(config: Record<string, unknown>): Record<string, string
       typeof value === "string" ? value.trim() : String(value ?? ""),
     ]),
   );
+}
+
+function getSecretFieldKeys(provider: string) {
+  return new Set(
+    (getPaymentProviderDefinition(provider)?.fields ?? [])
+      .filter((field) => field.secret)
+      .map((field) => field.key),
+  );
+}
+
+export function decryptPaymentConfigForUse(
+  provider: string,
+  config: Record<string, unknown>,
+): Record<string, string> {
+  const normalized = normalizeConfig(config);
+  const secretKeys = getSecretFieldKeys(provider);
+
+  for (const key of secretKeys) {
+    if (normalized[key]) {
+      normalized[key] = decryptIfEncrypted(normalized[key]);
+    }
+  }
+
+  return normalized;
+}
+
+export function preparePaymentConfigForStorage(
+  provider: string,
+  incomingConfig: Record<string, unknown>,
+  currentConfig?: Record<string, unknown> | null,
+): Record<string, string> {
+  const normalized = normalizeConfig(incomingConfig);
+  const current = currentConfig ? normalizeConfig(currentConfig) : {};
+  const secretKeys = getSecretFieldKeys(provider);
+
+  for (const key of secretKeys) {
+    const nextSecret = normalized[key]?.trim();
+    const currentSecret = current[key]?.trim();
+
+    if (nextSecret) {
+      normalized[key] = encrypt(nextSecret);
+    } else if (currentSecret) {
+      normalized[key] = isEncryptedValue(currentSecret) ? currentSecret : encrypt(currentSecret);
+    } else {
+      normalized[key] = "";
+    }
+  }
+
+  return normalized;
+}
+
+export function redactPaymentConfigForClient(
+  provider: string,
+  config: Record<string, unknown>,
+): Record<string, string> {
+  const normalized = normalizeConfig(config);
+  for (const key of getSecretFieldKeys(provider)) {
+    normalized[key] = "";
+  }
+  return normalized;
+}
+
+export function getPaymentSecretConfiguredState(
+  provider: string,
+  config: Record<string, unknown>,
+): Record<string, boolean> {
+  const normalized = normalizeConfig(config);
+  const result: Record<string, boolean> = {};
+  for (const key of getSecretFieldKeys(provider)) {
+    result[key] = Boolean(normalized[key]);
+  }
+  return result;
 }
 
 export function getPaymentProviderDefinition(provider: string) {

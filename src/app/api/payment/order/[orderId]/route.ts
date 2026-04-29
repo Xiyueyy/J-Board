@@ -1,13 +1,12 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getActiveSession } from "@/lib/require-auth";
 import { jsonError, jsonOk } from "@/lib/api-response";
 
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ orderId: string }> },
 ) {
-  const session = await getServerSession(authOptions);
+  const session = await getActiveSession();
   if (!session) {
     return jsonError("未登录", { status: 401 });
   }

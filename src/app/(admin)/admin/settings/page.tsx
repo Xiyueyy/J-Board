@@ -52,7 +52,7 @@ export default async function AdminSettingsPage() {
           inviteRewardRate: Number(config.inviteRewardRate),
           inviteRewardCouponId: config.inviteRewardCouponId,
           turnstileSiteKey: config.turnstileSiteKey,
-          turnstileSecretKey: config.turnstileSecretKey,
+          turnstileSecretConfigured: Boolean(config.turnstileSecretKey),
           smtpEnabled: config.smtpEnabled,
           smtpHost: config.smtpHost,
           smtpPort: config.smtpPort,

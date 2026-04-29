@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
+import { getActiveSession } from "@/lib/require-auth";
 import Link from "next/link";
-import { getServerSession } from "next-auth";
 import { ShoppingBag, ShoppingCart } from "lucide-react";
-import { authOptions } from "@/lib/auth";
 import { EmptyState, PageHeader, PageShell } from "@/components/shared/page-shell";
 import { buttonVariants } from "@/components/ui/button";
 import { CartClient } from "./cart-client";
@@ -14,7 +13,7 @@ export const metadata: Metadata = {
 };
 
 export default async function CartPage() {
-  const session = await getServerSession(authOptions);
+  const session = await getActiveSession();
   const data = await getCartPageData(session!.user.id);
 
   return (

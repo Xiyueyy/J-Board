@@ -4,6 +4,7 @@ import { EasyPayAdapter, type EasyPayConfig } from "./epay";
 import { AlipayF2FAdapter, type AlipayF2FConfig } from "./alipay-f2f";
 import { UsdtTrc20Adapter, type UsdtTrc20Config } from "./usdt-trc20";
 import {
+  decryptPaymentConfigForUse,
   getPaymentProviderName,
   parsePaymentConfig,
 } from "./catalog";
@@ -22,7 +23,7 @@ export async function getPaymentAdapter(provider: string): Promise<PaymentAdapte
 
   const cfg = parsePaymentConfig(
     realProvider,
-    config.config as Record<string, string>,
+    decryptPaymentConfigForUse(realProvider, config.config as Record<string, unknown>),
   );
 
   switch (realProvider) {

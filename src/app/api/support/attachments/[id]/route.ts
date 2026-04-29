@@ -1,12 +1,11 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getActiveSession } from "@/lib/require-auth";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await getServerSession(authOptions);
+  const session = await getActiveSession();
   if (!session) {
     return new Response("附件访问失败：你尚未登录，请登录后重新打开附件", { status: 401 });
   }

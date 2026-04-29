@@ -1,9 +1,8 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "./auth";
 import { jsonError } from "./api-response";
+import { getActiveSession } from "./require-auth";
 
 export async function requireAdminApiSession() {
-  const session = await getServerSession(authOptions);
+  const session = await getActiveSession();
   if (!session || session.user.role !== "ADMIN") {
     return {
       session: null,

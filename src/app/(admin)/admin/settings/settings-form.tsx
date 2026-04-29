@@ -41,7 +41,7 @@ interface AppConfig {
   inviteRewardRate: number;
   inviteRewardCouponId: string | null;
   turnstileSiteKey: string | null;
-  turnstileSecretKey: string | null;
+  turnstileSecretConfigured: boolean;
   smtpEnabled: boolean;
   smtpHost: string | null;
   smtpPort: number;
@@ -122,6 +122,11 @@ export function SettingsForm({ config, coupons }: { config: AppConfig; coupons: 
     const password = form.elements.namedItem("smtpPassword");
     if (password instanceof HTMLInputElement) {
       password.value = "";
+    }
+
+    const turnstileSecret = form.elements.namedItem("turnstileSecretKey");
+    if (turnstileSecret instanceof HTMLInputElement) {
+      turnstileSecret.value = "";
     }
   }
 
@@ -553,7 +558,16 @@ export function SettingsForm({ config, coupons }: { config: AppConfig; coupons: 
           </div>
           <div className="space-y-2">
             <Label htmlFor="turnstileSecretKey">Secret Key</Label>
-            <Input id="turnstileSecretKey" name="turnstileSecretKey" type="password" defaultValue={config.turnstileSecretKey ?? ""} placeholder="0x4AAAAAAA..." />
+            <Input
+              id="turnstileSecretKey"
+              name="turnstileSecretKey"
+              type="password"
+              placeholder={config.turnstileSecretConfigured ? "留空保持不变" : "0x4AAAAAAA..."}
+              autoComplete="new-password"
+            />
+            {config.turnstileSecretConfigured && (
+              <p className="text-xs leading-5 text-muted-foreground">Secret Key 已配置；留空保持不变。清空 Site Key 后保存可停用 Turnstile。</p>
+            )}
           </div>
         </div>
       </section>

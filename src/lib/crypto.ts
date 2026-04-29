@@ -18,6 +18,22 @@ export function encrypt(text: string): string {
   return `${iv.toString("hex")}:${authTag.toString("hex")}:${encrypted.toString("hex")}`;
 }
 
+function isHexBytes(value: string) {
+  return value.length > 0 && value.length % 2 === 0 && /^[0-9a-f]+$/i.test(value);
+}
+
+export function isEncryptedValue(data: string): boolean {
+  const parts = data.split(":");
+  if (parts.length !== 3) return false;
+
+  const [ivHex, authTagHex, encryptedHex] = parts;
+  return ivHex.length === 32
+    && authTagHex.length === 32
+    && isHexBytes(ivHex)
+    && isHexBytes(authTagHex)
+    && isHexBytes(encryptedHex);
+}
+
 export function decrypt(data: string): string {
   const parts = data.split(":");
   if (parts.length !== 3) {
@@ -27,4 +43,8 @@ export function decrypt(data: string): string {
   const decipher = crypto.createDecipheriv(ALGORITHM, getKey(), Buffer.from(ivHex, "hex"));
   decipher.setAuthTag(Buffer.from(authTagHex, "hex"));
   return decipher.update(Buffer.from(encryptedHex, "hex")) + decipher.final("utf8");
+}
+
+export function decryptIfEncrypted(data: string): string {
+  return isEncryptedValue(data) ? decrypt(data) : data;
 }

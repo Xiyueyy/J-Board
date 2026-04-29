@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
+import { getActiveSession } from "@/lib/require-auth";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { PageHeader, PageShell, SectionHeader } from "@/components/shared/page-shell";
 import { SubscriptionDetailCards } from "@/components/subscriptions/subscription-detail-cards";
 import { SubscriptionTimelineSection } from "@/components/subscriptions/subscription-timeline-section";
@@ -22,7 +21,7 @@ export default async function UserSubscriptionDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await getServerSession(authOptions);
+  const session = await getActiveSession();
   const { id } = await params;
   const requestHeaders = await headers();
   const [data, baseUrl] = await Promise.all([

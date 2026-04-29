@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { getActiveSession } from "@/lib/require-auth";
 
 export const metadata: Metadata = {
   title: "首页",
@@ -9,7 +8,7 @@ export const metadata: Metadata = {
 };
 
 export default async function Home() {
-  const session = await getServerSession(authOptions);
+  const session = await getActiveSession();
   if (!session) redirect("/login");
   if (session.user.role === "ADMIN") redirect("/admin/dashboard");
   redirect("/dashboard");

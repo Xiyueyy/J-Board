@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getActiveSession } from "@/lib/require-auth";
 import { PageHeader, PageShell } from "@/components/shared/page-shell";
 import { NotificationBulkAction } from "./notification-actions";
 import { NotificationList } from "./_components/notification-list";
@@ -12,7 +11,7 @@ export const metadata: Metadata = {
 };
 
 export default async function NotificationsPage() {
-  const session = await getServerSession(authOptions);
+  const session = await getActiveSession();
   const { notifications, unreadCount, readCount } = await getUserNotifications(session!.user.id);
 
   return (

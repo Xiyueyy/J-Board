@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
-import { authOptions } from "@/lib/auth";
+import { getActiveSession } from "@/lib/require-auth";
 import { getActiveSubscriptionRiskRestriction } from "@/services/subscription-risk-review";
 
 export const metadata: Metadata = {
@@ -17,7 +16,7 @@ export default async function PaymentLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await getServerSession(authOptions);
+  const session = await getActiveSession();
 
   if (!session) {
     redirect("/login");

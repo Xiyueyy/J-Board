@@ -60,7 +60,6 @@ function NodeCard({ node, siteUrl }: { node: NodeServerRow; siteUrl: string | nu
               name: node.name,
               panelUrl: node.panelUrl,
               panelUsername: node.panelUsername,
-              panelPassword: node.panelPassword,
             }}
             triggerLabel="编辑"
             triggerVariant="outline"

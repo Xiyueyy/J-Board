@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
+import { getActiveSession } from "@/lib/require-auth";
 import Link from "next/link";
-import { getServerSession } from "next-auth";
 import { Film, LifeBuoy, Radio } from "lucide-react";
 
-import { authOptions } from "@/lib/auth";
 import { EmptyState, PageShell } from "@/components/shared/page-shell";
 import { buttonVariants } from "@/components/ui/button";
 import { PendingOrderBanner } from "./pending-order-banner";
@@ -30,7 +29,7 @@ export const metadata: Metadata = {
 };
 
 export default async function StorePage() {
-  const session = await getServerSession(authOptions);
+  const session = await getActiveSession();
   const { plans, availabilityMap, pendingOrder, latencyRecommendations } = await getStorePageData(session?.user.id);
   const proxyPlans = getProxyPlans(plans);
   const streamingPlans = getStreamingPlans(plans);

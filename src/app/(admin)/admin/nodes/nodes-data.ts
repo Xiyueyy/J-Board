@@ -2,8 +2,15 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { parsePage } from "@/lib/utils";
 import { getConfiguredSiteUrl } from "@/services/site-url";
+import { sanitizeInboundSettings } from "@/services/node-inbound-sanitize";
 
-const nodeInclude = {
+const nodeSelect = {
+  id: true,
+  name: true,
+  panelUrl: true,
+  panelUsername: true,
+  status: true,
+  agentToken: true,
   _count: { select: { inbounds: true } },
   inbounds: {
     where: { isActive: true },
@@ -16,10 +23,10 @@ const nodeInclude = {
     },
     orderBy: { updatedAt: "desc" },
   },
-} satisfies Prisma.NodeServerInclude;
+} satisfies Prisma.NodeServerSelect;
 
 export type NodeServerRow = Prisma.NodeServerGetPayload<{
-  include: typeof nodeInclude;
+  select: typeof nodeSelect;
 }>;
 
 export async function getNodeServers(
@@ -44,7 +51,7 @@ export async function getNodeServers(
   const [nodes, total, siteUrl] = await Promise.all([
     prisma.nodeServer.findMany({
       where,
-      include: nodeInclude,
+      select: nodeSelect,
       orderBy: { createdAt: "desc" },
       skip,
       take: pageSize,
@@ -53,5 +60,14 @@ export async function getNodeServers(
     getConfiguredSiteUrl(),
   ]);
 
-  return { nodes, total, page, pageSize, filters: { q, status }, siteUrl };
+  const safeNodes = nodes.map((node) => ({
+    ...node,
+    agentToken: node.agentToken ? "configured" : null,
+    inbounds: node.inbounds.map((inbound) => ({
+      ...inbound,
+      settings: sanitizeInboundSettings(inbound.settings),
+    })),
+  }));
+
+  return { nodes: safeNodes, total, page, pageSize, filters: { q, status }, siteUrl };
 }

@@ -7,6 +7,7 @@ import { verifyTurnstile } from "@/lib/turnstile";
 import { rateLimit } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/request-context";
 import { isSmtpConfigured, normalizeEmailAddress, sendRegistrationVerificationEmail } from "@/services/email";
+import { decryptIfEncrypted } from "@/lib/crypto";
 
 const schema = z.object({
   email: z.string().email("邮箱格式不正确"),
@@ -58,8 +59,11 @@ export async function POST(req: Request) {
     );
   }
 
-  if (config.turnstileSecretKey) {
-    if (!turnstileToken || !(await verifyTurnstile(turnstileToken, config.turnstileSecretKey))) {
+  const turnstileSecretKey = config.turnstileSecretKey
+    ? decryptIfEncrypted(config.turnstileSecretKey)
+    : "";
+  if (turnstileSecretKey) {
+    if (!turnstileToken || !(await verifyTurnstile(turnstileToken, turnstileSecretKey))) {
       return NextResponse.json({ error: "人机验证失败：Turnstile token 缺失、已过期或校验未通过" }, { status: 403 });
     }
   }

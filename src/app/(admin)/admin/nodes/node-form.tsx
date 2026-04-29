@@ -22,7 +22,6 @@ interface NodeFormValue {
   name: string;
   panelUrl: string | null;
   panelUsername: string | null;
-  panelPassword: string | null;
 }
 
 export function NodeForm({
@@ -92,7 +91,13 @@ export function NodeForm({
             </div>
             <div>
               <Label>面板密码</Label>
-              <Input name="panelPassword" type="password" defaultValue={node?.panelPassword ?? ""} required />
+              <Input
+                name="panelPassword"
+                type="password"
+                placeholder={isEdit ? "留空则沿用当前密码" : "请输入面板密码"}
+                required={!isEdit}
+                autoComplete="new-password"
+              />
             </div>
           </div>
 

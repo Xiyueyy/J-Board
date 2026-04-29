@@ -6,14 +6,21 @@ import { requireAdmin } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { actorFromSession, recordAuditLog } from "@/services/audit";
-import { encrypt } from "@/lib/crypto";
+import { encrypt, isEncryptedValue } from "@/lib/crypto";
 import { testAndSyncNodeInbounds } from "@/services/node-panel/sync-inbounds";
 
-const nodeSchema = z.object({
+const nodeBaseSchema = z.object({
   name: z.string().trim().optional(),
   panelUrl: z.string().trim().min(1, "3x-ui 面板地址必填"),
   panelUsername: z.string().trim().min(1, "3x-ui 用户名必填"),
+});
+
+const createNodeSchema = nodeBaseSchema.extend({
   panelPassword: z.string().trim().min(1, "3x-ui 密码必填"),
+});
+
+const updateNodeSchema = nodeBaseSchema.extend({
+  panelPassword: z.string().trim().optional(),
 });
 
 function normalizePanelUrl(raw: string): string {
@@ -34,24 +41,26 @@ function normalizePanelUrl(raw: string): string {
   }
 }
 
-function parseNodeData(formData: FormData) {
-  const raw = nodeSchema.parse(Object.fromEntries(formData));
+function parseNodeData(formData: FormData, mode: "create" | "update") {
+  const raw = (mode === "create" ? createNodeSchema : updateNodeSchema)
+    .parse(Object.fromEntries(formData));
   const panelUrl = normalizePanelUrl(raw.panelUrl);
   const panel = new URL(panelUrl);
+  const panelPassword = raw.panelPassword?.trim();
 
   const name = (raw.name || "").trim() || `节点-${panel.hostname}`;
   return {
     name,
     panelUrl,
     panelUsername: raw.panelUsername,
-    panelPassword: raw.panelPassword,
+    ...(panelPassword ? { panelPassword: encrypt(panelPassword) } : {}),
     panelType: "3x-ui",
   };
 }
 
 export async function createNode(formData: FormData) {
   const session = await requireAdmin();
-  const data = parseNodeData(formData);
+  const data = parseNodeData(formData, "create");
   const node = await prisma.nodeServer.create({ data });
   const result = await testAndSyncNodeInbounds(node);
 
@@ -72,7 +81,18 @@ export async function createNode(formData: FormData) {
 
 export async function updateNode(id: string, formData: FormData) {
   const session = await requireAdmin();
-  const data = parseNodeData(formData);
+  const data = parseNodeData(formData, "update");
+
+  if (!data.panelPassword) {
+    const existing = await prisma.nodeServer.findUnique({
+      where: { id },
+      select: { panelPassword: true },
+    });
+    if (existing?.panelPassword && !isEncryptedValue(existing.panelPassword)) {
+      data.panelPassword = encrypt(existing.panelPassword);
+    }
+  }
+
   const node = await prisma.nodeServer.update({ where: { id }, data });
   const result = await testAndSyncNodeInbounds(node);
 

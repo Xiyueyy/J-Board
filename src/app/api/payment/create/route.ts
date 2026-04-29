@@ -1,7 +1,6 @@
-import { getServerSession } from "next-auth";
 import { z } from "zod";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getActiveSession } from "@/lib/require-auth";
 import { jsonError, jsonOk } from "@/lib/api-response";
 import { getPaymentAdapter } from "@/services/payment/factory";
 import { rateLimit } from "@/lib/rate-limit";
@@ -28,7 +27,7 @@ function isSafePaymentUrl(value: string | undefined) {
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getActiveSession();
     if (!session) {
       return jsonError("未登录", { status: 401 });
     }

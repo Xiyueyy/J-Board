@@ -20,7 +20,7 @@ export default async function PaymentsPage() {
         title="支付配置"
       />
       <div className="grid gap-5">
-        {providerConfigs.map(({ provider, config }) => (
+        {providerConfigs.map(({ provider, config, secretConfigured }) => (
           <section key={provider.id} className="surface-card overflow-hidden rounded-xl p-4">
             <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="flex items-start gap-3">
@@ -37,7 +37,8 @@ export default async function PaymentsPage() {
             <PaymentConfigForm
               provider={provider.id}
               fields={provider.fields}
-              currentConfig={config?.config as Record<string, string> | undefined}
+              currentConfig={config?.config}
+              secretConfigured={secretConfigured}
               enabled={config?.enabled ?? false}
             />
           </section>

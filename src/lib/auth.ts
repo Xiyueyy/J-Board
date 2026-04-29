@@ -3,6 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 import { verifyTurnstile } from "./turnstile";
+import { decryptIfEncrypted } from "./crypto";
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -17,9 +18,12 @@ export const authOptions: NextAuthOptions = {
         if (!credentials?.email || !credentials?.password) return null;
 
         const config = await prisma.appConfig.findUnique({ where: { id: "default" } });
-        if (config?.turnstileSecretKey) {
+        const turnstileSecretKey = config?.turnstileSecretKey
+          ? decryptIfEncrypted(config.turnstileSecretKey)
+          : "";
+        if (turnstileSecretKey) {
           const token = credentials.turnstileToken;
-          if (!token || !(await verifyTurnstile(token, config.turnstileSecretKey))) {
+          if (!token || !(await verifyTurnstile(token, turnstileSecretKey))) {
             return null;
           }
         }

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getActiveSession } from "@/lib/require-auth";
 import { PageHeader, PageShell } from "@/components/shared/page-shell";
 import { prisma } from "@/lib/prisma";
 import { getAppConfig } from "@/services/app-config";
@@ -19,7 +18,7 @@ export default async function SupportPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const session = await getServerSession(authOptions);
+  const session = await getActiveSession();
   const resolvedSearchParams = await searchParams;
   const riskEventId = typeof resolvedSearchParams.riskEventId === "string" ? resolvedSearchParams.riskEventId : "";
   const [tickets, openTicketCount, config, riskEvent] = await Promise.all([

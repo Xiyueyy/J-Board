@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { SubscriptionRiskEvent } from "@prisma/client";
+import { ChevronDown } from "lucide-react";
 import {
   SubscriptionStatusBadge,
   SubscriptionTypeBadge,
@@ -155,60 +156,97 @@ function ReviewState({ event }: { event: SubscriptionRiskEventRow }) {
   );
 }
 
-function RiskEventCard({ event }: { event: SubscriptionRiskEventRow }) {
+function RiskStat({ label, value }: { label: string; value: string | number }) {
   return (
-    <article className="surface-card overflow-hidden rounded-xl">
-      <div className="grid xl:grid-cols-[minmax(0,0.9fr)_minmax(25rem,1.2fr)_minmax(18rem,0.65fr)]">
-        <section className="space-y-5 p-5">
+    <span className="min-w-0 rounded-lg border border-border/70 bg-muted/20 px-2.5 py-1.5">
+      <span className="block text-[0.68rem] leading-none text-muted-foreground">{label}</span>
+      <span className="mt-1 block truncate font-mono text-sm font-semibold leading-none">{value}</span>
+    </span>
+  );
+}
+
+function RiskEventCard({ event }: { event: SubscriptionRiskEventRow }) {
+  const summary = event.geoSummary;
+  const userLabel = event.user?.email ?? "未知用户";
+  const scopeLabel = event.subscription?.plan.name ?? "总订阅";
+
+  return (
+    <details className="surface-card group overflow-hidden rounded-xl">
+      <summary className="flex cursor-pointer list-none items-start gap-4 p-4 text-left [&::-webkit-details-marker]:hidden sm:p-5">
+        <div className="min-w-0 flex-1 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge tone={event.level === "SUSPENDED" ? "danger" : "warning"}>
               {reasonLabel(event.reason)}
             </StatusBadge>
             <StatusBadge tone="neutral">{kindLabel(event.kind)}</StatusBadge>
+            <StatusBadge tone={reviewStatusTone(event.reviewStatus)}>{reviewStatusLabel(event.reviewStatus)}</StatusBadge>
+            {event.userRestrictionActive && <StatusBadge tone="danger">用户端限制中</StatusBadge>}
+            {event.reportSentAt && <StatusBadge tone="info">已发送报告</StatusBadge>}
             <span className="text-xs text-muted-foreground">{formatDate(event.createdAt)}</span>
           </div>
 
-          <div className="space-y-2">
-            <p className="text-sm font-semibold leading-6">{event.message}</p>
-            <p className="break-all font-mono text-xs text-muted-foreground">最近 IP：{event.ip || "未知 IP"}</p>
-          </div>
-
-          <div className="grid gap-4 border-t border-border/60 pt-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">关联用户</p>
-              <UserBlock event={event} />
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+            <div className="min-w-0 space-y-1.5">
+              <p className="line-clamp-2 text-sm font-semibold leading-6">{event.message}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {userLabel} · {scopeLabel} · 最近 IP：{event.ip || "未知 IP"}
+              </p>
             </div>
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">影响范围</p>
-              <EventScope event={event} />
+            <div className="grid grid-cols-4 gap-2 text-right sm:flex sm:justify-end">
+              <RiskStat label="国家" value={summary.uniqueCountryCount} />
+              <RiskStat label="省区" value={summary.uniqueRegionCount} />
+              <RiskStat label="城市" value={summary.uniqueCityCount} />
+              <RiskStat label="IP" value={summary.uniqueIpCount} />
             </div>
           </div>
-        </section>
+        </div>
 
-        <section className="border-y border-border/70 bg-muted/10 p-5 xl:border-x xl:border-y-0">
-          <SubscriptionRiskGeoDetails summary={event.geoSummary} />
-        </section>
+        <span className="mt-1 flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors group-hover:text-foreground">
+          <span className="hidden sm:inline">详情</span>
+          <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
+        </span>
+      </summary>
 
-        <aside className="space-y-5 p-5">
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">处理状态</p>
-            <ReviewState event={event} />
-          </div>
-          <div className="border-t border-border/60 pt-4">
-            <SubscriptionRiskReviewActions
-              eventId={event.id}
-              reviewStatus={event.reviewStatus}
-              canRestoreSubscription={event.canRestoreSubscription}
-              restorableSubscriptionCount={event.restorableSubscriptionCount}
-              riskReport={event.riskReport}
-              reportSentAt={event.reportSentAt}
-              userRestrictionActive={event.userRestrictionActive}
-              finalAction={event.finalAction}
-            />
-          </div>
-        </aside>
+      <div className="border-t border-border/70">
+        <div className="grid xl:grid-cols-[minmax(0,0.85fr)_minmax(24rem,1.15fr)_minmax(18rem,0.7fr)]">
+          <section className="space-y-5 p-5">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">关联用户</p>
+                <UserBlock event={event} />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">影响范围</p>
+                <EventScope event={event} />
+              </div>
+            </div>
+          </section>
+
+          <section className="border-y border-border/70 bg-muted/10 p-5 xl:border-x xl:border-y-0">
+            <SubscriptionRiskGeoDetails summary={summary} />
+          </section>
+
+          <aside className="space-y-5 p-5">
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">处理状态</p>
+              <ReviewState event={event} />
+            </div>
+            <div className="border-t border-border/60 pt-4">
+              <SubscriptionRiskReviewActions
+                eventId={event.id}
+                reviewStatus={event.reviewStatus}
+                canRestoreSubscription={event.canRestoreSubscription}
+                restorableSubscriptionCount={event.restorableSubscriptionCount}
+                riskReport={event.riskReport}
+                reportSentAt={event.reportSentAt}
+                userRestrictionActive={event.userRestrictionActive}
+                finalAction={event.finalAction}
+              />
+            </div>
+          </aside>
+        </div>
       </div>
-    </article>
+    </details>
   );
 }
 

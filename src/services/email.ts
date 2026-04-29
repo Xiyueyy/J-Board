@@ -242,13 +242,19 @@ export async function verifyEmailToken(token: string) {
 
   if (record.purpose === "REGISTRATION_VERIFY") {
     if (!record.userId) return { ok: false as const, message: "验证链接缺少账户信息" };
-    await prisma.user.update({
-      where: { id: record.userId },
+    const result = await prisma.user.updateMany({
+      where: {
+        id: record.userId,
+        status: { in: ["PENDING_EMAIL", "ACTIVE"] },
+      },
       data: {
         emailVerifiedAt: new Date(),
         status: "ACTIVE",
       },
     });
+    if (result.count !== 1) {
+      return { ok: false as const, message: "账户当前状态不允许完成验证，请联系管理员" };
+    }
     return { ok: true as const, message: "邮箱验证完成，现在可以登录账户。" };
   }
 

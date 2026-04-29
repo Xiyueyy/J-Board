@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
+import { getActiveSession } from "@/lib/require-auth";
 import { notFound } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { PageHeader, PageShell } from "@/components/shared/page-shell";
 import {
   SupportTicketPriorityBadge,
@@ -23,7 +22,7 @@ export default async function SupportTicketDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await getServerSession(authOptions);
+  const session = await getActiveSession();
   const { id } = await params;
   const ticket = await getUserSupportTicketDetail({
     ticketId: id,

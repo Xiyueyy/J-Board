@@ -4,8 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import {
+  decryptPaymentConfigForUse,
   normalizePaymentConfig,
   parsePaymentConfig,
+  preparePaymentConfigForStorage,
 } from "@/services/payment/catalog";
 import { actorFromSession, recordAuditLog } from "@/services/audit";
 import { z } from "zod";
@@ -18,11 +20,19 @@ export async function savePaymentConfig(
   const session = await requireAdmin();
 
   const normalizedConfig = normalizePaymentConfig(config);
-  let finalConfig = normalizedConfig as Record<string, string | number>;
+  const current = await prisma.paymentConfig.findUnique({
+    where: { provider },
+    select: { config: true },
+  });
+  const storageConfig = preparePaymentConfigForStorage(
+    provider,
+    normalizedConfig,
+    current?.config as Record<string, unknown> | undefined,
+  );
 
   if (enabled) {
     try {
-      finalConfig = parsePaymentConfig(provider, normalizedConfig) as Record<string, string | number>;
+      parsePaymentConfig(provider, decryptPaymentConfigForUse(provider, storageConfig));
     } catch (error) {
       if (error instanceof z.ZodError) {
         const messages = error.issues.map((e) => e.message).join("；");
@@ -32,7 +42,7 @@ export async function savePaymentConfig(
     }
   }
 
-  const jsonConfig = JSON.parse(JSON.stringify(finalConfig));
+  const jsonConfig = JSON.parse(JSON.stringify(storageConfig));
 
   await prisma.paymentConfig.upsert({
     where: { provider },

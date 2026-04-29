@@ -8,7 +8,7 @@ import { requireAdmin } from "@/lib/require-auth";
 import { actorFromSession, recordAuditLog } from "@/services/audit";
 import { getAppConfig } from "@/services/app-config";
 import { normalizeSiteUrl } from "@/services/site-url";
-import { encrypt } from "@/lib/crypto";
+import { encrypt, isEncryptedValue } from "@/lib/crypto";
 import { getErrorMessage } from "@/lib/errors";
 import { sendSmtpTestEmail } from "@/services/email";
 
@@ -100,6 +100,17 @@ function buildSettingsUpdate(parsed: z.infer<typeof settingsSchema>, current: Aw
   const smtpPassword = parsed.smtpPassword?.trim()
     ? encrypt(parsed.smtpPassword.trim())
     : current.smtpPassword;
+  const turnstileSiteKey = parsed.turnstileSiteKey || null;
+  const currentTurnstileSecret = current.turnstileSecretKey
+    ? isEncryptedValue(current.turnstileSecretKey)
+      ? current.turnstileSecretKey
+      : encrypt(current.turnstileSecretKey)
+    : null;
+  const turnstileSecretKey = parsed.turnstileSecretKey?.trim()
+    ? encrypt(parsed.turnstileSecretKey.trim())
+    : turnstileSiteKey
+      ? currentTurnstileSecret
+      : null;
 
   const next = {
     siteName: parsed.siteName,
@@ -150,8 +161,8 @@ function buildSettingsUpdate(parsed: z.infer<typeof settingsSchema>, current: Aw
     inviteRewardEnabled: optionalBoolean(parsed.inviteRewardEnabled, current.inviteRewardEnabled),
     inviteRewardRate: parsed.inviteRewardRate ?? Number(current.inviteRewardRate),
     inviteRewardCouponId: parsed.inviteRewardCouponId || null,
-    turnstileSiteKey: parsed.turnstileSiteKey || null,
-    turnstileSecretKey: parsed.turnstileSecretKey || null,
+    turnstileSiteKey,
+    turnstileSecretKey,
     smtpEnabled,
     smtpHost: parsed.smtpHost || null,
     smtpPort: parsed.smtpPort ?? current.smtpPort,

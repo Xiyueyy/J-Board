@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { getActiveSession } from "@/lib/require-auth";
 import { AnnouncementLoader } from "@/components/announcements/announcement-loader";
 import { PageTransition } from "@/components/shared/page-transition";
 
@@ -19,7 +18,7 @@ export default async function AuthLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await getServerSession(authOptions);
+  const session = await getActiveSession();
   if (session) {
     redirect(session.user.role === "ADMIN" ? "/admin/dashboard" : "/dashboard");
   }

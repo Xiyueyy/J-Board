@@ -1,10 +1,9 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getActiveSession } from "@/lib/require-auth";
 import { jsonError, jsonOk } from "@/lib/api-response";
 import { getUserNotifications } from "@/app/(user)/notifications/notifications-data";
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
+  const session = await getActiveSession();
   if (!session) return jsonError("未登录", { status: 401 });
 
   const data = await getUserNotifications(session.user.id);

@@ -98,9 +98,9 @@ export function buildSubscriptionUserInfo(stats: SubscriptionTrafficStats | null
 }
 
 function getAggregateSubscriptionSecret() {
-  const secret = process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET ?? process.env.DATABASE_URL;
+  const secret = process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET;
   if (!secret) {
-    throw new Error("缺少订阅链接签名密钥，请配置 NEXTAUTH_SECRET");
+    throw new Error("缺少订阅链接签名密钥，请配置 NEXTAUTH_SECRET 或 AUTH_SECRET");
   }
   return secret;
 }
