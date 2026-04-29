@@ -183,10 +183,22 @@ export function SubscriptionRiskReviewActions({
 
     startTransition(async () => {
       try {
-        await finalizeSubscriptionRiskDecision(eventId, dialog.action, note, {
+        const result = await finalizeSubscriptionRiskDecision(eventId, dialog.action, note, {
           notifyUser: dialog.action === "KEEP_RESTRICTED" && notifyUser,
         });
-        toast.success(dialog.action === "RESTORE_ACCESS" ? "已解除限制" : "已保持限制并记录处置");
+        if (result.restorationErrors.length > 0 || result.notificationError) {
+          const details = [
+            ...result.restorationErrors.slice(0, 2),
+            result.notificationError,
+          ].filter(Boolean).join("；");
+          toast.warning(
+            dialog.action === "RESTORE_ACCESS"
+              ? `限制已解除，但部分附带动作失败：${details}`
+              : `处置已保存，但通知发送异常：${details}`,
+          );
+        } else {
+          toast.success(dialog.action === "RESTORE_ACCESS" ? "已解除限制" : "已保持限制并记录处置");
+        }
         setDialog(null);
         router.refresh();
       } catch (error) {

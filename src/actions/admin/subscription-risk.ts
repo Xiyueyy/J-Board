@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/require-auth";
 import { actorFromSession, recordAuditLog } from "@/services/audit";
 import { createNotification } from "@/services/notifications";
+import { getErrorMessage } from "@/lib/errors";
 import {
   buildSubscriptionRiskReport,
   getSubscriptionRiskAccessLogsForEvent,
@@ -160,6 +161,17 @@ async function restoreSubscriptionsForEvent(event: {
   kind: "SINGLE" | "AGGREGATE";
 }) {
   const now = new Date();
+  const restoredSubscriptionIds: string[] = [];
+  const restorationErrors: string[] = [];
+
+  async function tryRestore(subscriptionId: string) {
+    try {
+      await activateSubscription(subscriptionId);
+      restoredSubscriptionIds.push(subscriptionId);
+    } catch (error) {
+      restorationErrors.push(`${subscriptionId}: ${getErrorMessage(error, "恢复订阅失败")}`);
+    }
+  }
 
   if (event.kind === "SINGLE" && event.subscriptionId) {
     const subscription = await prisma.userSubscription.findUnique({
@@ -167,10 +179,9 @@ async function restoreSubscriptionsForEvent(event: {
       select: { id: true, status: true, endDate: true },
     });
     if (subscription?.status === "SUSPENDED" && subscription.endDate > now) {
-      await activateSubscription(subscription.id);
-      return [subscription.id];
+      await tryRestore(subscription.id);
     }
-    return [];
+    return { restoredSubscriptionIds, restorationErrors };
   }
 
   if (event.kind === "AGGREGATE" && event.userId) {
@@ -185,15 +196,12 @@ async function restoreSubscriptionsForEvent(event: {
       orderBy: { createdAt: "desc" },
     });
 
-    const restoredIds: string[] = [];
     for (const subscription of subscriptions) {
-      await activateSubscription(subscription.id);
-      restoredIds.push(subscription.id);
+      await tryRestore(subscription.id);
     }
-    return restoredIds;
   }
 
-  return [];
+  return { restoredSubscriptionIds, restorationErrors };
 }
 
 export async function updateSubscriptionRiskReview(
@@ -389,12 +397,13 @@ export async function finalizeSubscriptionRiskDecision(
     report = generated.report;
   }
 
-  const restoredSubscriptionIds = action === "RESTORE_ACCESS"
+  const { restoredSubscriptionIds, restorationErrors } = action === "RESTORE_ACCESS"
     ? await restoreSubscriptionsForEvent(event)
-    : [];
+    : { restoredSubscriptionIds: [] as string[], restorationErrors: [] as string[] };
   const normalizedNote = normalizeNote(note);
   const now = new Date();
   const shouldKeepRestriction = action === "KEEP_RESTRICTED" && (event.userRestrictionActive || options.notifyUser);
+  let notificationError: string | null = null;
 
   await prisma.subscriptionRiskEvent.update({
     where: { id: event.id },
@@ -410,28 +419,35 @@ export async function finalizeSubscriptionRiskDecision(
       finalActionByEmail: actor.email ?? null,
       userRestrictionActive: shouldKeepRestriction,
       userRestrictionResolvedAt: action === "RESTORE_ACCESS" ? now : event.userRestrictionResolvedAt,
-      ...(options.notifyUser
-        ? {
-            reportSentAt: event.reportSentAt ?? now,
-          }
-        : {}),
     },
   });
 
   if (action === "RESTORE_ACCESS" && event.userId) {
-    await createNotification({
-      userId: event.userId,
-      type: "SUBSCRIPTION",
-      level: "SUCCESS",
-      title: "订阅风控限制已解除",
-      body: "管理员已完成订阅风控复核，你的账户操作限制已解除。",
-      link: "/subscriptions",
-      dedupeKey: `risk:restriction-restored:${event.id}`,
-    });
+    try {
+      await createNotification({
+        userId: event.userId,
+        type: "SUBSCRIPTION",
+        level: "SUCCESS",
+        title: "订阅风控限制已解除",
+        body: "管理员已完成订阅风控复核，你的账户操作限制已解除。",
+        link: "/subscriptions",
+        dedupeKey: `risk:restriction-restored:${event.id}`,
+      });
+    } catch (error) {
+      notificationError = getErrorMessage(error, "解除限制通知发送失败");
+    }
   }
 
   if (action === "KEEP_RESTRICTED" && options.notifyUser && event.userId && report) {
-    await notifyUserWithRiskReport({ eventId: event.id, userId: event.userId });
+    try {
+      await notifyUserWithRiskReport({ eventId: event.id, userId: event.userId });
+      await prisma.subscriptionRiskEvent.update({
+        where: { id: event.id },
+        data: { reportSentAt: event.reportSentAt ?? now },
+      });
+    } catch (error) {
+      notificationError = getErrorMessage(error, "发送用户通知失败");
+    }
   }
 
   const targetLabel = await getRiskTargetLabel({
@@ -452,9 +468,11 @@ export async function finalizeSubscriptionRiskDecision(
       notifyUser: options.notifyUser === true,
       note: normalizedNote,
       restoredSubscriptionIds,
+      restorationErrors,
+      notificationError,
     },
   });
 
   revalidateRiskViews(event.subscriptionId, event.userId);
-  return { ok: true, restoredSubscriptionIds };
+  return { ok: true, restoredSubscriptionIds, restorationErrors, notificationError };
 }
