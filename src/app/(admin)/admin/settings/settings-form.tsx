@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { Bell, Clock3, Gift, Mail, Send, Settings2, ShieldAlert, ShieldCheck } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,17 +47,23 @@ interface CouponOption {
 const selectClassName = "premium-input w-full appearance-none px-3.5 py-2 text-sm outline-none";
 
 export function SettingsForm({ config, coupons }: { config: AppConfig; coupons: CouponOption[] }) {
+  const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [testingEmail, setTestingEmail] = useState(false);
 
-  async function handleSubmit(formData: FormData) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const form = event.currentTarget;
     setSaving(true);
     try {
-      const result = await saveAppSettings(formData);
+      const result = await saveAppSettings(new FormData(form));
       if (!result.ok) {
         toast.error(result.error);
         return;
       }
+      clearPasswordField(form);
+      router.refresh();
       toast.success("设置已保存");
     } catch (error) {
       toast.error(getErrorMessage(error, "保存失败"));
@@ -73,6 +80,10 @@ export function SettingsForm({ config, coupons }: { config: AppConfig; coupons: 
     try {
       const result = await testSmtpSettings(new FormData(form));
       if (!result.ok) {
+        if (result.settingsSaved) {
+          clearPasswordField(form);
+          router.refresh();
+        }
         toast.error(
           result.settingsSaved
             ? `设置已保存，但测试邮件没有发出：${result.error}`
@@ -80,6 +91,8 @@ export function SettingsForm({ config, coupons }: { config: AppConfig; coupons: 
         );
         return;
       }
+      clearPasswordField(form);
+      router.refresh();
       toast.success("设置已保存，测试邮件已发送");
     } catch (error) {
       toast.error(getErrorMessage(error, "测试邮件发送失败"));
@@ -88,8 +101,15 @@ export function SettingsForm({ config, coupons }: { config: AppConfig; coupons: 
     }
   }
 
+  function clearPasswordField(form: HTMLFormElement) {
+    const password = form.elements.namedItem("smtpPassword");
+    if (password instanceof HTMLInputElement) {
+      password.value = "";
+    }
+  }
+
   return (
-    <form id="app-settings-form" action={handleSubmit} className="form-panel space-y-6">
+    <form id="app-settings-form" onSubmit={handleSubmit} className="form-panel space-y-6">
       <div className="flex items-start gap-3">
         <span className="flex size-11 shrink-0 items-center justify-center rounded-lg border border-primary/15 bg-primary/10 text-primary">
           <Settings2 className="size-5" />
