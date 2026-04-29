@@ -31,6 +31,14 @@ function reasonLabel(reason: SubscriptionRiskEvent["reason"]) {
       return "国家异常警告";
     case "COUNTRY_VARIANCE_SUSPEND":
       return "国家异常暂停";
+    case "NODE_ACCESS_VOLUME_WARNING":
+      return "节点高频警告";
+    case "NODE_ACCESS_VOLUME_SUSPEND":
+      return "节点高频暂停";
+    case "NODE_ACCESS_TARGET_WARNING":
+      return "目标分散警告";
+    case "NODE_ACCESS_TARGET_SUSPEND":
+      return "目标分散暂停";
   }
 }
 
@@ -255,7 +263,7 @@ export function SubscriptionRiskTable({ events }: { events: SubscriptionRiskEven
     return (
       <EmptyState
         title="暂无订阅风控事件"
-        description="订阅链接出现跨城市、跨省份或跨国家访问异常后，会在这里进入人工跟进队列。"
+        description="订阅链接或节点真实连接出现跨城市、跨省份或跨国家异常后，会在这里进入人工跟进队列。"
       />
     );
   }

@@ -5,6 +5,11 @@ GH_REPO="${GH_REPO:-JetSprow/J-Board}"
 AGENT_TAG="${AGENT_TAG:-latest}"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 SERVICE_NAME="${SERVICE_NAME:-jboard-agent}"
+ENV_FILE="${ENV_FILE:-/etc/jboard-agent.env}"
+XRAY_ACCESS_LOG_PATH="${XRAY_ACCESS_LOG_PATH:-}"
+XRAY_LOG_INTERVAL="${XRAY_LOG_INTERVAL:-1m}"
+XRAY_LOG_STATE_FILE="${XRAY_LOG_STATE_FILE:-/var/lib/jboard-agent/xray-log-state.json}"
+XRAY_LOG_START_AT_END="${XRAY_LOG_START_AT_END:-1}"
 TMP_DIR="$(mktemp -d)"
 ARCH="$(uname -m)"
 
@@ -21,6 +26,16 @@ run_as_root() {
   else
     echo "This script needs root privileges. Re-run as root or install sudo." >&2
     exit 1
+  fi
+}
+
+run_as_root_output() {
+  if [ "$(id -u)" -eq 0 ]; then
+    "$@"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+  else
+    return 1
   fi
 }
 
@@ -50,6 +65,119 @@ resolve_release_tag() {
     | head -n 1
 }
 
+get_env_value() {
+  local key="$1"
+  if ! run_as_root_output test -f "$ENV_FILE" 2>/dev/null; then
+    return 0
+  fi
+  run_as_root_output grep -E "^${key}=" "$ENV_FILE" 2>/dev/null \
+    | tail -n 1 \
+    | cut -d= -f2- \
+    | sed -e "s/^\'//" -e "s/\'$//" -e 's/^"//' -e 's/"$//' || true
+}
+
+detect_xray_access_log() {
+  if [ -n "$XRAY_ACCESS_LOG_PATH" ]; then
+    printf '%s\n' "$XRAY_ACCESS_LOG_PATH"
+    return 0
+  fi
+
+  for candidate in \
+    /usr/local/x-ui/access.log \
+    /usr/local/x-ui/bin/access.log \
+    /usr/local/x-ui/xray/access.log \
+    /etc/x-ui/access.log \
+    /etc/x-ui/xray/access.log \
+    /var/log/xray/access.log \
+    /var/log/x-ui/access.log \
+    /opt/3x-ui/access.log \
+    /opt/x-ui/access.log; do
+    if run_as_root_output test -f "$candidate" 2>/dev/null; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  for root in /usr/local /etc /var/log /opt /var/lib/docker/volumes; do
+    if ! run_as_root_output test -d "$root" 2>/dev/null; then
+      continue
+    fi
+    while IFS= read -r candidate; do
+      case "$candidate" in
+        *x-ui*|*3x-ui*|*xray*|*Xray*)
+          printf '%s\n' "$candidate"
+          return 0
+          ;;
+      esac
+    done < <(run_as_root_output find "$root" -type f \( -name 'access.log' -o -name '*xray*.log' \) 2>/dev/null | head -n 50)
+  done
+
+  return 1
+}
+
+upsert_env_value() {
+  local key="$1"
+  local value="$2"
+  local quoted=""
+  printf -v quoted %q "$value"
+
+  if run_as_root_output test -f "$ENV_FILE" 2>/dev/null; then
+    run_as_root_output cat "$ENV_FILE" > "$TMP_DIR/env.current"
+  else
+    : > "$TMP_DIR/env.current"
+  fi
+
+  if grep -qE "^${key}=" "$TMP_DIR/env.current"; then
+    sed -E "s|^${key}=.*|${key}=${quoted}|" "$TMP_DIR/env.current" > "$TMP_DIR/env.next"
+  else
+    cp "$TMP_DIR/env.current" "$TMP_DIR/env.next"
+    printf '%s=%s\n' "$key" "$quoted" >> "$TMP_DIR/env.next"
+  fi
+  run_as_root install -m 0600 "$TMP_DIR/env.next" "$ENV_FILE"
+}
+
+configure_xray_log_env() {
+  local current=""
+  current="$(get_env_value XRAY_ACCESS_LOG_PATH)"
+  if [ -n "$current" ]; then
+    XRAY_ACCESS_LOG_PATH="$current"
+  fi
+
+  local detected=""
+  detected="$(detect_xray_access_log || true)"
+  if [ -z "$detected" ]; then
+    return 1
+  fi
+
+  XRAY_ACCESS_LOG_PATH="$detected"
+  run_as_root mkdir -p "$(dirname "$XRAY_LOG_STATE_FILE")"
+  if run_as_root_output test -f "$XRAY_ACCESS_LOG_PATH" 2>/dev/null; then
+    run_as_root chmod a+r "$XRAY_ACCESS_LOG_PATH" 2>/dev/null || true
+  fi
+
+  upsert_env_value XRAY_ACCESS_LOG_PATH "$XRAY_ACCESS_LOG_PATH"
+  upsert_env_value XRAY_LOG_INTERVAL "$XRAY_LOG_INTERVAL"
+  upsert_env_value XRAY_LOG_STATE_FILE "$XRAY_LOG_STATE_FILE"
+  upsert_env_value XRAY_LOG_START_AT_END "$XRAY_LOG_START_AT_END"
+  return 0
+}
+
+print_xray_log_hint() {
+  cat <<'HINT'
+
+Xray access log was not found automatically. Node access risk telemetry remains disabled.
+To enable it, open 3x-ui panel -> Xray Config and set:
+
+"log": {
+  "access": "/usr/local/x-ui/access.log",
+  "error": "/usr/local/x-ui/error.log",
+  "loglevel": "warning"
+}
+
+Then restart x-ui and rerun this upgrade script, or add XRAY_ACCESS_LOG_PATH=/usr/local/x-ui/access.log to /etc/jboard-agent.env.
+HINT
+}
+
 ASSET="$(detect_asset)"
 RESOLVED_TAG="$(resolve_release_tag)"
 
@@ -62,12 +190,12 @@ DOWNLOAD_BASE="https://github.com/${GH_REPO}/releases/download/${RESOLVED_TAG}"
 DOWNLOAD_URL="${DOWNLOAD_BASE}/${ASSET}"
 CHECKSUM_URL="${DOWNLOAD_BASE}/SHA256SUMS"
 
-echo "[1/5] Release tag: ${RESOLVED_TAG}"
-echo "[2/5] Downloading probe agent binary: ${ASSET}"
+echo "[1/6] Release tag: ${RESOLVED_TAG}"
+echo "[2/6] Downloading probe agent binary: ${ASSET}"
 curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/$ASSET"
 
 if curl -fsSL "$CHECKSUM_URL" -o "$TMP_DIR/SHA256SUMS" 2>/dev/null; then
-  echo "[3/5] Verifying checksum..."
+  echo "[3/6] Verifying checksum..."
   grep "  ${ASSET}$" "$TMP_DIR/SHA256SUMS" > "$TMP_DIR/SHA256SUMS.current"
   (
     cd "$TMP_DIR"
@@ -78,14 +206,22 @@ if curl -fsSL "$CHECKSUM_URL" -o "$TMP_DIR/SHA256SUMS" 2>/dev/null; then
     fi
   )
 else
-  echo "[3/5] Checksum file not found; skipping verification."
+  echo "[3/6] Checksum file not found; skipping verification."
 fi
 
-echo "[4/5] Installing binary..."
+echo "[4/6] Installing binary..."
 run_as_root install -m 0755 "$TMP_DIR/$ASSET" "${INSTALL_DIR}/jboard-agent"
-run_as_root mkdir -p /var/log/jboard
+run_as_root mkdir -p /var/log/jboard /var/lib/jboard-agent
 
-echo "[5/5] Restarting service..."
+echo "[5/6] Detecting Xray access log..."
+if configure_xray_log_env; then
+  echo "Node access risk telemetry: enabled (${XRAY_ACCESS_LOG_PATH})"
+else
+  echo "Node access risk telemetry: disabled"
+  print_xray_log_hint
+fi
+
+echo "[6/6] Restarting service..."
 run_as_root systemctl daemon-reload
 run_as_root systemctl restart "$SERVICE_NAME"
 

@@ -8,6 +8,10 @@ SERVICE_NAME="${SERVICE_NAME:-jboard-agent}"
 ENV_FILE="${ENV_FILE:-/etc/jboard-agent.env}"
 LATENCY_INTERVAL="${LATENCY_INTERVAL:-5m}"
 TRACE_INTERVAL="${TRACE_INTERVAL:-30m}"
+XRAY_ACCESS_LOG_PATH="${XRAY_ACCESS_LOG_PATH:-}"
+XRAY_LOG_INTERVAL="${XRAY_LOG_INTERVAL:-1m}"
+XRAY_LOG_STATE_FILE="${XRAY_LOG_STATE_FILE:-/var/lib/jboard-agent/xray-log-state.json}"
+XRAY_LOG_START_AT_END="${XRAY_LOG_START_AT_END:-1}"
 INSTALL_NEXTTRACE="${INSTALL_NEXTTRACE:-1}"
 TMP_DIR="$(mktemp -d)"
 ARCH="$(uname -m)"
@@ -32,6 +36,16 @@ run_as_root() {
   else
     echo "This script needs root privileges. Re-run as root or install sudo." >&2
     exit 1
+  fi
+}
+
+run_as_root_output() {
+  if [ "$(id -u)" -eq 0 ]; then
+    "$@"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+  else
+    return 1
   fi
 }
 
@@ -61,6 +75,77 @@ resolve_release_tag() {
     | head -n 1
 }
 
+detect_xray_access_log() {
+  if [ -n "$XRAY_ACCESS_LOG_PATH" ]; then
+    printf '%s\n' "$XRAY_ACCESS_LOG_PATH"
+    return 0
+  fi
+
+  for candidate in \
+    /usr/local/x-ui/access.log \
+    /usr/local/x-ui/bin/access.log \
+    /usr/local/x-ui/xray/access.log \
+    /etc/x-ui/access.log \
+    /etc/x-ui/xray/access.log \
+    /var/log/xray/access.log \
+    /var/log/x-ui/access.log \
+    /opt/3x-ui/access.log \
+    /opt/x-ui/access.log; do
+    if run_as_root_output test -f "$candidate" 2>/dev/null; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  for root in /usr/local /etc /var/log /opt /var/lib/docker/volumes; do
+    if ! run_as_root_output test -d "$root" 2>/dev/null; then
+      continue
+    fi
+    while IFS= read -r candidate; do
+      case "$candidate" in
+        *x-ui*|*3x-ui*|*xray*|*Xray*)
+          printf '%s\n' "$candidate"
+          return 0
+          ;;
+      esac
+    done < <(run_as_root_output find "$root" -type f \( -name 'access.log' -o -name '*xray*.log' \) 2>/dev/null | head -n 50)
+  done
+
+  return 1
+}
+
+prepare_xray_access_log() {
+  local detected=""
+  detected="$(detect_xray_access_log || true)"
+  if [ -z "$detected" ]; then
+    XRAY_ACCESS_LOG_PATH=""
+    return 1
+  fi
+
+  XRAY_ACCESS_LOG_PATH="$detected"
+  run_as_root mkdir -p "$(dirname "$XRAY_LOG_STATE_FILE")"
+  if run_as_root_output test -f "$XRAY_ACCESS_LOG_PATH" 2>/dev/null; then
+    run_as_root chmod a+r "$XRAY_ACCESS_LOG_PATH" 2>/dev/null || true
+  fi
+  return 0
+}
+
+print_xray_log_hint() {
+  cat <<'HINT'
+
+Xray access log was not found automatically, so node access risk telemetry is disabled for now.
+To enable it, open 3x-ui panel -> Xray Config and set:
+
+"log": {
+  "access": "/usr/local/x-ui/access.log",
+  "error": "/usr/local/x-ui/error.log",
+  "loglevel": "warning"
+}
+
+Then restart x-ui and rerun this installer, or add XRAY_ACCESS_LOG_PATH=/usr/local/x-ui/access.log to /etc/jboard-agent.env.
+HINT
+}
+
 ASSET="$(detect_asset)"
 RESOLVED_TAG="$(resolve_release_tag)"
 
@@ -73,12 +158,12 @@ DOWNLOAD_BASE="https://github.com/${GH_REPO}/releases/download/${RESOLVED_TAG}"
 DOWNLOAD_URL="${DOWNLOAD_BASE}/${ASSET}"
 CHECKSUM_URL="${DOWNLOAD_BASE}/SHA256SUMS"
 
-echo "[1/8] Release tag: ${RESOLVED_TAG}"
-echo "[2/8] Downloading probe agent binary: ${ASSET}"
+echo "[1/9] Release tag: ${RESOLVED_TAG}"
+echo "[2/9] Downloading probe agent binary: ${ASSET}"
 curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/$ASSET"
 
 if curl -fsSL "$CHECKSUM_URL" -o "$TMP_DIR/SHA256SUMS" 2>/dev/null; then
-  echo "[3/8] Verifying checksum..."
+  echo "[3/9] Verifying checksum..."
   grep "  ${ASSET}$" "$TMP_DIR/SHA256SUMS" > "$TMP_DIR/SHA256SUMS.current"
   (
     cd "$TMP_DIR"
@@ -89,32 +174,43 @@ if curl -fsSL "$CHECKSUM_URL" -o "$TMP_DIR/SHA256SUMS" 2>/dev/null; then
     fi
   )
 else
-  echo "[3/8] Checksum file not found; skipping verification."
+  echo "[3/9] Checksum file not found; skipping verification."
 fi
 
-echo "[4/8] Installing binary..."
+echo "[4/9] Installing binary..."
 run_as_root install -m 0755 "$TMP_DIR/$ASSET" "${INSTALL_DIR}/jboard-agent"
-run_as_root mkdir -p /var/log/jboard
+run_as_root mkdir -p /var/log/jboard /var/lib/jboard-agent
 
 if [ "$INSTALL_NEXTTRACE" = "1" ] && ! command -v nexttrace >/dev/null 2>&1; then
-  echo "[5/8] Installing nexttrace for route probing..."
+  echo "[5/9] Installing nexttrace for route probing..."
   curl -fsSL https://raw.githubusercontent.com/nxtrace/NTrace-core/main/nt_install.sh -o "$TMP_DIR/nt_install.sh"
   run_as_root bash "$TMP_DIR/nt_install.sh"
 else
-  echo "[5/8] nexttrace already installed or skipped."
+  echo "[5/9] nexttrace already installed or skipped."
 fi
 
-echo "[6/8] Writing environment file..."
+echo "[6/9] Detecting Xray access log..."
+if prepare_xray_access_log; then
+  echo "Found Xray access log: ${XRAY_ACCESS_LOG_PATH}"
+else
+  echo "Xray access log not found; continuing without node access risk telemetry."
+fi
+
+echo "[7/9] Writing environment file..."
 ENV_TMP="$TMP_DIR/jboard-agent.env"
 {
   printf 'SERVER_URL=%q\n' "$SERVER_URL"
   printf 'AUTH_TOKEN=%q\n' "$AUTH_TOKEN"
   printf 'LATENCY_INTERVAL=%q\n' "$LATENCY_INTERVAL"
   printf 'TRACE_INTERVAL=%q\n' "$TRACE_INTERVAL"
+  printf 'XRAY_ACCESS_LOG_PATH=%q\n' "$XRAY_ACCESS_LOG_PATH"
+  printf 'XRAY_LOG_INTERVAL=%q\n' "$XRAY_LOG_INTERVAL"
+  printf 'XRAY_LOG_STATE_FILE=%q\n' "$XRAY_LOG_STATE_FILE"
+  printf 'XRAY_LOG_START_AT_END=%q\n' "$XRAY_LOG_START_AT_END"
 } > "$ENV_TMP"
 run_as_root install -m 0600 "$ENV_TMP" "$ENV_FILE"
 
-echo "[7/8] Writing systemd service..."
+echo "[8/9] Writing systemd service..."
 SERVICE_TMP="$TMP_DIR/${SERVICE_NAME}.service"
 cat > "$SERVICE_TMP" <<SERVICE
 [Unit]
@@ -135,12 +231,19 @@ WantedBy=multi-user.target
 SERVICE
 run_as_root install -m 0644 "$SERVICE_TMP" "/etc/systemd/system/${SERVICE_NAME}.service"
 
-echo "[8/8] Enabling and starting service..."
+echo "[9/9] Enabling and starting service..."
 run_as_root systemctl daemon-reload
 run_as_root systemctl enable --now "$SERVICE_NAME"
 
 echo
 echo "Install complete."
+if [ -n "$XRAY_ACCESS_LOG_PATH" ]; then
+  echo "Node access risk telemetry: enabled (${XRAY_ACCESS_LOG_PATH})"
+else
+  echo "Node access risk telemetry: disabled"
+  print_xray_log_hint
+fi
+
 echo
 echo "Service status:"
 run_as_root systemctl --no-pager --full status "$SERVICE_NAME" || true

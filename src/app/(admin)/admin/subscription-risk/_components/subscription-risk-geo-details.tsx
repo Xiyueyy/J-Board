@@ -44,7 +44,7 @@ function WorldRiskMap({ summary }: { summary: SubscriptionRiskGeoSummary }) {
         viewBox="0 0 360 180"
         className="h-[15rem] w-full bg-[radial-gradient(circle_at_30%_20%,color-mix(in_oklch,var(--primary)_10%,transparent),transparent_30%),linear-gradient(135deg,var(--muted),var(--card))]"
         role="img"
-        aria-label="订阅访问 IP 世界地图分布"
+        aria-label="订阅访问与节点连接 IP 世界地图分布"
       >
         <rect width="360" height="180" rx="12" fill="transparent" />
         {[-120, -60, 0, 60, 120].map((longitude) => {
@@ -164,7 +164,7 @@ export function SubscriptionRiskGeoDetails({ summary }: { summary: SubscriptionR
       <details className="group rounded-xl border border-border/70 bg-muted/20">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-medium [&::-webkit-details-marker]:hidden">
           <span className="flex items-center gap-2">
-            <MapPin className="size-4 text-primary" /> IP 访问明细
+            <MapPin className="size-4 text-primary" /> IP 访问/连接明细
           </span>
           <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
         </summary>

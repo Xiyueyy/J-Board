@@ -37,6 +37,11 @@ interface AppConfig {
   subscriptionRiskCountrySuspend: number;
   subscriptionRiskIpLimitPerHour: number;
   subscriptionRiskTokenLimitPerHour: number;
+  nodeAccessRiskEnabled: boolean;
+  nodeAccessConnectionWarning: number;
+  nodeAccessConnectionSuspend: number;
+  nodeAccessUniqueTargetWarning: number;
+  nodeAccessUniqueTargetSuspend: number;
   inviteRewardEnabled: boolean;
   inviteRewardRate: number;
   inviteRewardCouponId: string | null;
@@ -389,9 +394,37 @@ export function SettingsForm({ config, coupons }: { config: AppConfig; coupons: 
                   defaultValue={config.subscriptionRiskTokenLimitPerHour}
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="nodeAccessRiskEnabled">节点日志风控</Label>
+                <select
+                  id="nodeAccessRiskEnabled"
+                  name="nodeAccessRiskEnabled"
+                  defaultValue={String(config.nodeAccessRiskEnabled)}
+                  className={selectClassName}
+                >
+                  <option value="true">开启，接收 Agent Xray 日志上报</option>
+                  <option value="false">关闭，只保留订阅接口风控</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="nodeAccessConnectionWarning">节点连接警告阈值</Label>
+                <Input id="nodeAccessConnectionWarning" name="nodeAccessConnectionWarning" type="number" min={1} max={100000} defaultValue={config.nodeAccessConnectionWarning} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="nodeAccessConnectionSuspend">节点连接暂停阈值</Label>
+                <Input id="nodeAccessConnectionSuspend" name="nodeAccessConnectionSuspend" type="number" min={1} max={100000} defaultValue={config.nodeAccessConnectionSuspend} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="nodeAccessUniqueTargetWarning">不同目标警告阈值</Label>
+                <Input id="nodeAccessUniqueTargetWarning" name="nodeAccessUniqueTargetWarning" type="number" min={1} max={100000} defaultValue={config.nodeAccessUniqueTargetWarning} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="nodeAccessUniqueTargetSuspend">不同目标暂停阈值</Label>
+                <Input id="nodeAccessUniqueTargetSuspend" name="nodeAccessUniqueTargetSuspend" type="number" min={1} max={100000} defaultValue={config.nodeAccessUniqueTargetSuspend} />
+              </div>
             </div>
             <p className="text-xs leading-5 text-muted-foreground">
-              默认值对应原规则：24 小时内 4 城市警告、5 城市暂停；2 省/地区警告、3 省/地区暂停；2 国家警告、3 国家暂停；IP 180 次/小时，订阅 60 次/小时。
+              默认值对应原规则：24 小时内 4 城市警告、5 城市暂停；2 省/地区警告、3 省/地区暂停；2 国家警告、3 国家暂停；IP 180 次/小时，订阅 60 次/小时。节点日志风控只在 Agent 配置 XRAY_ACCESS_LOG_PATH 后生效；连接数和不同目标数按 Agent 单次聚合窗口计算。
             </p>
           </div>
         )}

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { classifyTraceRoute } from "@/lib/route-classify";
+import { normalizeTraceHops } from "@/lib/trace-normalize";
 
 const MAX_NODE_IDS = 100;
 
@@ -24,7 +26,7 @@ export async function GET(req: Request) {
     }
     result[row.nodeId].push({
       carrier: row.carrier,
-      summary: row.summary,
+      summary: classifyTraceRoute({ summary: row.summary, hops: normalizeTraceHops(row.hops) }),
       hopCount: row.hopCount,
       hops: row.hops,
       updatedAt: row.updatedAt.toISOString(),

@@ -24,6 +24,11 @@ type SubscriptionRiskConfig = Pick<
   | "subscriptionRiskRegionSuspend"
   | "subscriptionRiskCountryWarning"
   | "subscriptionRiskCountrySuspend"
+  | "nodeAccessRiskEnabled"
+  | "nodeAccessConnectionWarning"
+  | "nodeAccessConnectionSuspend"
+  | "nodeAccessUniqueTargetWarning"
+  | "nodeAccessUniqueTargetSuspend"
 >;
 
 interface RecordSubscriptionAccessInput {
@@ -35,6 +40,7 @@ interface RecordSubscriptionAccessInput {
   reason?: string | null;
   evaluateRisk?: boolean;
   riskConfig?: SubscriptionRiskConfig;
+  sourceLabel?: string | null;
 }
 
 interface RiskDecision {
@@ -99,8 +105,9 @@ function riskMessage(options: {
   countryLabels: string[];
   regionLabels: string[];
   cityLabels: string[];
+  sourceLabel?: string | null;
 }) {
-  const scope = getScopeLabel(options.kind);
+  const scope = options.sourceLabel?.trim() || getScopeLabel(options.kind);
   const locationSummary = options.decision.reason.startsWith("COUNTRY")
     ? `${options.countryCount} 个国家/地区：${formatKeyPreview(options.countryLabels)}`
     : options.decision.reason.startsWith("REGION")
@@ -358,6 +365,7 @@ async function evaluateSubscriptionRisk(input: {
   userId?: string | null;
   subscriptionId?: string | null;
   ip: string;
+  sourceLabel?: string | null;
   db: DbClient;
   config?: SubscriptionRiskConfig;
 }): Promise<RiskEvaluationResult> {
@@ -433,6 +441,7 @@ async function evaluateSubscriptionRisk(input: {
     countryLabels,
     regionLabels,
     cityLabels,
+    sourceLabel: input.sourceLabel,
   });
 
   const { event, created } = await createRiskEvent({
@@ -497,6 +506,142 @@ async function evaluateSubscriptionRisk(input: {
   return { warned: true, suspended: false, eventId: event.id };
 }
 
+function decideNodeAccessAbuseRisk(input: {
+  connectionCount: number;
+  uniqueTargetCount: number;
+  config: SubscriptionRiskConfig;
+}): RiskDecision | null {
+  if (!input.config.nodeAccessRiskEnabled) return null;
+
+  if (input.config.subscriptionRiskAutoSuspend && input.uniqueTargetCount >= input.config.nodeAccessUniqueTargetSuspend) {
+    return { level: "SUSPENDED", reason: "NODE_ACCESS_TARGET_SUSPEND" };
+  }
+  if (input.config.subscriptionRiskAutoSuspend && input.connectionCount >= input.config.nodeAccessConnectionSuspend) {
+    return { level: "SUSPENDED", reason: "NODE_ACCESS_VOLUME_SUSPEND" };
+  }
+  if (input.uniqueTargetCount >= input.config.nodeAccessUniqueTargetWarning) {
+    return { level: "WARNING", reason: "NODE_ACCESS_TARGET_WARNING" };
+  }
+  if (input.connectionCount >= input.config.nodeAccessConnectionWarning) {
+    return { level: "WARNING", reason: "NODE_ACCESS_VOLUME_WARNING" };
+  }
+
+  return null;
+}
+
+function nodeAccessAbuseMessage(input: {
+  decision: RiskDecision;
+  ip: string;
+  connectionCount: number;
+  uniqueTargetCount: number;
+  targetHost?: string | null;
+  targetPort?: number | null;
+}) {
+  const metric = input.decision.reason.includes("TARGET")
+    ? "不同目标 " + input.uniqueTargetCount + " 个"
+    : "连接 " + input.connectionCount + " 次";
+  const targetValue = [input.targetHost, input.targetPort].filter(Boolean).join(":");
+  const target = targetValue ? "，样本目标 " + targetValue : "";
+  const action = input.decision.level === "SUSPENDED" ? "已自动暂停" : "已记录警告";
+  return "节点真实连接行为异常，单个聚合窗口内出现 " + metric + "，来源 IP " + input.ip + target + "，" + action + "。";
+}
+
+export async function evaluateNodeAccessAbuseRisk(input: {
+  userId: string;
+  subscriptionId: string;
+  ip: string;
+  connectionCount: number;
+  uniqueTargetCount: number;
+  targetHost?: string | null;
+  targetPort?: number | null;
+  config?: SubscriptionRiskConfig;
+  db?: DbClient;
+}): Promise<RiskEvaluationResult> {
+  const db = input.db ?? prisma;
+  const config = input.config ?? await getAppConfig(db);
+  if (!config.subscriptionRiskEnabled || !config.nodeAccessRiskEnabled) {
+    return { warned: false, suspended: false };
+  }
+
+  const decision = decideNodeAccessAbuseRisk({
+    connectionCount: input.connectionCount,
+    uniqueTargetCount: input.uniqueTargetCount,
+    config,
+  });
+  if (!decision) return { warned: false, suspended: false };
+
+  const windowStartedAt = new Date(Date.now() - config.subscriptionRiskWindowHours * 60 * 60 * 1000);
+  const message = nodeAccessAbuseMessage({
+    decision,
+    ip: input.ip,
+    connectionCount: input.connectionCount,
+    uniqueTargetCount: input.uniqueTargetCount,
+    targetHost: input.targetHost,
+    targetPort: input.targetPort,
+  });
+
+  const { event, created } = await createRiskEvent({
+    kind: "SINGLE",
+    userId: input.userId,
+    subscriptionId: input.subscriptionId,
+    ip: input.ip,
+    decision,
+    message,
+    windowStartedAt,
+    countryLabels: [],
+    regionLabels: [],
+    cityLabels: [],
+    db,
+  });
+
+  if (created) {
+    const targetLabel = await getTargetLabel({ userId: input.userId, subscriptionId: input.subscriptionId }, db);
+    await recordAuditLog({
+      action: decision.level === "SUSPENDED" ? "risk.node_access.suspend" : "risk.node_access.warning",
+      targetType: "UserSubscription",
+      targetId: input.subscriptionId,
+      targetLabel,
+      message,
+      metadata: {
+        eventId: event.id,
+        reason: decision.reason,
+        ip: input.ip,
+        connectionCount: input.connectionCount,
+        uniqueTargetCount: input.uniqueTargetCount,
+        targetHost: input.targetHost ?? null,
+        targetPort: input.targetPort ?? null,
+        windowStartedAt: windowStartedAt.toISOString(),
+      },
+    }, db);
+
+    if (decision.level === "WARNING") {
+      await createNotification({
+        userId: input.userId,
+        type: "SUBSCRIPTION",
+        level: "WARNING",
+        title: "节点连接行为异常",
+        body: "检测到你的订阅在节点侧出现异常高频连接或目标分散。如果不是你本人操作，请重置订阅访问并联系管理员。",
+        link: "/subscriptions/" + input.subscriptionId,
+        dedupeKey: "risk:node-access:warning:" + event.id,
+      }, db);
+    }
+  }
+
+  if (decision.level === "SUSPENDED") {
+    const suspendedIds = await suspendScopeForRisk({
+      kind: "SINGLE",
+      userId: input.userId,
+      subscriptionId: input.subscriptionId,
+      message,
+    });
+    revalidateRiskViews(suspendedIds);
+    return { warned: false, suspended: true, eventId: event.id };
+  }
+
+  if (created) revalidateRiskViews([input.subscriptionId]);
+  return { warned: true, suspended: false, eventId: event.id };
+}
+
 export async function recordSubscriptionAccess(
   input: RecordSubscriptionAccessInput,
   db: DbClient = prisma,
@@ -529,6 +674,7 @@ export async function recordSubscriptionAccess(
     userId: input.userId,
     subscriptionId: input.subscriptionId,
     ip: input.context.ip,
+    sourceLabel: input.sourceLabel,
     db,
     config: input.riskConfig,
   });

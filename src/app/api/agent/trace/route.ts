@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgent, isAuthError } from "@/lib/agent-auth";
 import { normalizeTraceHops, normalizeTraceText } from "@/lib/trace-normalize";
+import { classifyTraceRoute } from "@/lib/route-classify";
 
 export async function POST(req: Request) {
   const auth = await authenticateAgent(req);
@@ -32,7 +33,8 @@ export async function POST(req: Request) {
   for (const trace of body.traces) {
     if (!validCarriers.has(trace.carrier)) continue;
     const normalizedHops = normalizeTraceHops(trace.hops);
-    const normalizedSummary = normalizeTraceText(trace.summary) || "路由信息";
+    const submittedSummary = normalizeTraceText(trace.summary);
+    const normalizedSummary = classifyTraceRoute({ summary: submittedSummary, hops: normalizedHops });
     const hopCount = Number(trace.hopCount);
     const normalizedHopCount =
       Number.isFinite(hopCount) && hopCount > 0

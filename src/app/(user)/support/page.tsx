@@ -47,7 +47,7 @@ export default async function SupportPage({
         subject: "订阅风控复核申请",
         category: "订阅风控",
         priority: "HIGH" as const,
-        body: "我需要复核订阅风控限制。\n\n请在这里补充：近期访问订阅的设备、所在城市/国家、是否出差或旅行、是否曾分享订阅链接。\n\n系统判定：" + reasonLabel(riskEvent.reason) + "\n" + riskEvent.message,
+        body: "我需要复核订阅风控限制。\n\n请在这里补充：近期访问订阅的设备、所在城市/国家、是否出差或旅行、是否曾分享订阅链接或通过其他设备转发节点。\n\n系统判定：" + reasonLabel(riskEvent.reason) + "\n" + riskEvent.message,
       }
     : undefined;
 

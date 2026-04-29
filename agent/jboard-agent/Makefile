@@ -1,5 +1,5 @@
 BINARY := jboard-agent
-VERSION := 2.3.0
+VERSION := 3.0.0
 LDFLAGS := -s -w
 
 .PHONY: build build-linux clean

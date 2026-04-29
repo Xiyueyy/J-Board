@@ -79,7 +79,7 @@ function localizedName(record: { names?: object } | null | undefined) {
   return names["zh-CN"] ?? names.en ?? Object.values(names).find((value) => typeof value === "string") ?? null;
 }
 
-function getGeoIpLocation(ip: string): RequestGeoContext {
+export function getIpGeoContext(ip: string): RequestGeoContext {
   if (ip === "unknown" || !isIP(ip)) return emptyGeoContext();
 
   const reader = getGeoIpReader();
@@ -244,7 +244,7 @@ export function getRequestGeo(headers: HeaderReader, ip = "unknown"): RequestGeo
   }
 
   const headerGeo = { country, region, regionCode, city, latitude, longitude, source };
-  return mergeGeoContext(headerGeo, getGeoIpLocation(ip));
+  return mergeGeoContext(headerGeo, getIpGeoContext(ip));
 }
 
 export function getClientRequestContext(headers: HeaderReader): ClientRequestContext {

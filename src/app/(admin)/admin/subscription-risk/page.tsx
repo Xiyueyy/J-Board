@@ -7,7 +7,7 @@ import { getSubscriptionRiskEvents } from "./risk-data";
 
 export const metadata: Metadata = {
   title: "订阅风控",
-  description: "查看订阅访问异常、关联用户和人工处理状态。",
+  description: "查看订阅访问与节点连接异常、关联用户和人工处理状态。",
 };
 
 export default async function AdminSubscriptionRiskPage({
@@ -22,7 +22,7 @@ export default async function AdminSubscriptionRiskPage({
       <PageHeader
         eyebrow="商品与订单"
         title="订阅风控"
-        description="订阅链接跨城市或跨省份访问异常后，会进入这里供管理员确认、备注、恢复或继续处置。"
+        description="订阅链接或节点真实连接出现跨城市、跨省份访问异常后，会进入这里供管理员确认、备注、恢复或继续处置。"
       />
 
       <AdminFilterBar

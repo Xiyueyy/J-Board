@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -13,14 +14,23 @@ type Config struct {
 
 	LatencyInterval time.Duration
 	TraceInterval   time.Duration
+
+	XrayAccessLogPath string
+	XrayLogStateFile  string
+	XrayLogInterval   time.Duration
+	XrayLogStartAtEnd bool
 }
 
 func Load() *Config {
 	cfg := &Config{
-		ServerURL:       envOrDefault("SERVER_URL", ""),
-		AuthToken:       envOrDefault("AUTH_TOKEN", ""),
-		LatencyInterval: envDuration("LATENCY_INTERVAL", 5*time.Minute),
-		TraceInterval:   envDuration("TRACE_INTERVAL", 30*time.Minute),
+		ServerURL:         envOrDefault("SERVER_URL", ""),
+		AuthToken:         envOrDefault("AUTH_TOKEN", ""),
+		LatencyInterval:   envDuration("LATENCY_INTERVAL", 5*time.Minute),
+		TraceInterval:     envDuration("TRACE_INTERVAL", 30*time.Minute),
+		XrayAccessLogPath: envOrDefault("XRAY_ACCESS_LOG_PATH", ""),
+		XrayLogStateFile:  envOrDefault("XRAY_LOG_STATE_FILE", "/var/lib/jboard-agent/xray-log-state.json"),
+		XrayLogInterval:   envDuration("XRAY_LOG_INTERVAL", time.Minute),
+		XrayLogStartAtEnd: envBool("XRAY_LOG_START_AT_END", true),
 	}
 
 	if cfg.ServerURL == "" || cfg.AuthToken == "" {
@@ -52,4 +62,20 @@ func envDuration(key string, fallback time.Duration) time.Duration {
 	}
 
 	return fallback
+}
+
+func envBool(key string, fallback bool) bool {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "y", "on":
+		return true
+	case "0", "false", "no", "n", "off":
+		return false
+	default:
+		return fallback
+	}
 }

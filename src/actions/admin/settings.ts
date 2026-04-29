@@ -38,6 +38,11 @@ const settingsSchema = z.object({
   subscriptionRiskCountrySuspend: z.coerce.number().int().min(2).max(100).optional(),
   subscriptionRiskIpLimitPerHour: z.coerce.number().int().min(1).max(100000).optional(),
   subscriptionRiskTokenLimitPerHour: z.coerce.number().int().min(1).max(100000).optional(),
+  nodeAccessRiskEnabled: z.string().optional(),
+  nodeAccessConnectionWarning: z.coerce.number().int().min(1).max(100000).optional(),
+  nodeAccessConnectionSuspend: z.coerce.number().int().min(1).max(100000).optional(),
+  nodeAccessUniqueTargetWarning: z.coerce.number().int().min(1).max(100000).optional(),
+  nodeAccessUniqueTargetSuspend: z.coerce.number().int().min(1).max(100000).optional(),
   inviteRewardEnabled: z.string().optional(),
   inviteRewardRate: z.coerce.number().min(0).max(100).optional(),
   inviteRewardCouponId: z.string().trim().optional(),
@@ -158,6 +163,18 @@ function buildSettingsUpdate(parsed: z.infer<typeof settingsSchema>, current: Aw
       parsed.subscriptionRiskIpLimitPerHour ?? current.subscriptionRiskIpLimitPerHour,
     subscriptionRiskTokenLimitPerHour:
       parsed.subscriptionRiskTokenLimitPerHour ?? current.subscriptionRiskTokenLimitPerHour,
+    nodeAccessRiskEnabled: optionalBoolean(
+      parsed.nodeAccessRiskEnabled,
+      current.nodeAccessRiskEnabled,
+    ),
+    nodeAccessConnectionWarning:
+      parsed.nodeAccessConnectionWarning ?? current.nodeAccessConnectionWarning,
+    nodeAccessConnectionSuspend:
+      parsed.nodeAccessConnectionSuspend ?? current.nodeAccessConnectionSuspend,
+    nodeAccessUniqueTargetWarning:
+      parsed.nodeAccessUniqueTargetWarning ?? current.nodeAccessUniqueTargetWarning,
+    nodeAccessUniqueTargetSuspend:
+      parsed.nodeAccessUniqueTargetSuspend ?? current.nodeAccessUniqueTargetSuspend,
     inviteRewardEnabled: optionalBoolean(parsed.inviteRewardEnabled, current.inviteRewardEnabled),
     inviteRewardRate: parsed.inviteRewardRate ?? Number(current.inviteRewardRate),
     inviteRewardCouponId: parsed.inviteRewardCouponId || null,
@@ -181,6 +198,12 @@ function buildSettingsUpdate(parsed: z.infer<typeof settingsSchema>, current: Aw
   }
   if (next.subscriptionRiskCountrySuspend < next.subscriptionRiskCountryWarning) {
     throw new Error("国家暂停阈值不能小于国家警告阈值");
+  }
+  if (next.nodeAccessConnectionSuspend < next.nodeAccessConnectionWarning) {
+    throw new Error("节点连接暂停阈值不能小于警告阈值");
+  }
+  if (next.nodeAccessUniqueTargetSuspend < next.nodeAccessUniqueTargetWarning) {
+    throw new Error("节点目标数暂停阈值不能小于警告阈值");
   }
 
   if (next.smtpEnabled || next.emailVerificationRequired) {

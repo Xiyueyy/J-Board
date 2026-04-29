@@ -53,6 +53,10 @@ enum SubscriptionRiskReason {
   REGION_VARIANCE_SUSPEND
   COUNTRY_VARIANCE_WARNING
   COUNTRY_VARIANCE_SUSPEND
+  NODE_ACCESS_VOLUME_WARNING
+  NODE_ACCESS_VOLUME_SUSPEND
+  NODE_ACCESS_TARGET_WARNING
+  NODE_ACCESS_TARGET_SUSPEND
 }
 
 enum SubscriptionRiskReviewStatus {
@@ -775,6 +779,11 @@ model AppConfig {
   subscriptionRiskCountrySuspend    Int      @default(3)
   subscriptionRiskIpLimitPerHour    Int      @default(180)
   subscriptionRiskTokenLimitPerHour Int      @default(60)
+  nodeAccessRiskEnabled             Boolean  @default(true)
+  nodeAccessConnectionWarning        Int      @default(180)
+  nodeAccessConnectionSuspend        Int      @default(360)
+  nodeAccessUniqueTargetWarning      Int      @default(80)
+  nodeAccessUniqueTargetSuspend      Int      @default(160)
   inviteRewardCouponId              String?
   inviteRewardRate                  Decimal  @default(0) @db.Decimal(5, 2)
   inviteRewardEnabled               Boolean  @default(false)

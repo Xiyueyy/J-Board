@@ -27,6 +27,9 @@ type hopDetail struct {
 	IP      string  `json:"ip"`
 	Geo     string  `json:"geo"`
 	Latency float64 `json:"latency"`
+	ASN     string  `json:"asn,omitempty"`
+	Owner   string  `json:"owner,omitempty"`
+	ISP     string  `json:"isp,omitempty"`
 }
 
 type traceResult struct {
@@ -129,7 +132,6 @@ func runTrace(ip string) ([]hopDetail, string, error) {
 	}
 
 	var hops []hopDetail
-	var asnumbers []string
 	for i, hopGroup := range parsed.Hops {
 		hop := hopDetail{Hop: i + 1}
 		for _, probe := range hopGroup {
@@ -151,9 +153,9 @@ func runTrace(ip string) ([]hopDetail, string, error) {
 						parts = append(parts, probe.Geo.Owner)
 					}
 					hop.Geo = strings.Join(parts, " ")
-					if probe.Geo.Asnumber != "" {
-						asnumbers = append(asnumbers, probe.Geo.Asnumber)
-					}
+					hop.ASN = probe.Geo.Asnumber
+					hop.Owner = probe.Geo.Owner
+					hop.ISP = probe.Geo.Isp
 				}
 				break
 			}
@@ -167,34 +169,6 @@ func runTrace(ip string) ([]hopDetail, string, error) {
 		hops[0].Geo = ""
 	}
 
-	summary := detectSummary(hops, asnumbers)
+	summary := detectSummary(hops)
 	return hops, summary, nil
-}
-
-func detectSummary(hops []hopDetail, asnumbers []string) string {
-	combined := ""
-	for _, h := range hops {
-		combined += " " + strings.ToUpper(h.Geo)
-	}
-	asSet := ""
-	for _, asn := range asnumbers {
-		asSet += " " + asn
-	}
-
-	switch {
-	case strings.Contains(combined, "CN2") && strings.Contains(combined, "GIA"):
-		return "CN2 GIA"
-	case strings.Contains(combined, "CN2"):
-		return "CN2 GT"
-	case strings.Contains(asSet, "9929") || strings.Contains(combined, "CUII") || strings.Contains(combined, "A网"):
-		return "AS9929"
-	case strings.Contains(asSet, "4837"):
-		return "AS4837"
-	case strings.Contains(combined, "CMI") || strings.Contains(asSet, "58453"):
-		return "CMI"
-	case strings.Contains(combined, "CMIN2") || strings.Contains(asSet, "59807"):
-		return "CMIN2"
-	default:
-		return "普通线路"
-	}
 }

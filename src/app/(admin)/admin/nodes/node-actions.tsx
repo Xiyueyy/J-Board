@@ -91,7 +91,7 @@ export function NodeActions({ node, siteUrl }: { node: NodeActionValue; siteUrl:
           size="sm"
           variant="outline"
           title="撤销这个探测 Token？"
-          description="撤销后，延迟和线路探测程序将无法继续上报数据。"
+          description="撤销后，延迟、线路探测和节点日志风控程序将无法继续上报数据。"
           confirmLabel="撤销 Token"
           successMessage="探测 Token 已撤销"
           errorMessage="撤销失败"
@@ -170,7 +170,7 @@ export function NodeActions({ node, siteUrl }: { node: NodeActionValue; siteUrl:
               </p>
             )}
             <p className="text-xs leading-5 text-muted-foreground">
-              此 Agent 仅用于 `/api/agent/latency` 和 `/api/agent/trace` 探测上报；节点客户端开通已改由 3x-ui 面板 API 处理。
+              此 Agent 用于 `/api/agent/latency`、`/api/agent/trace` 探测上报；安装脚本会自动查找 3x-ui/Xray access log，找到后启用节点日志风控。Agent 只读日志，不修改 3x-ui 配置。
             </p>
           </div>
         </DialogContent>

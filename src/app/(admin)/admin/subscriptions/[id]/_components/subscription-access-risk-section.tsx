@@ -67,6 +67,14 @@ function reasonLabel(reason: SubscriptionRiskEvent["reason"]) {
       return "国家异常警告";
     case "COUNTRY_VARIANCE_SUSPEND":
       return "国家异常暂停";
+    case "NODE_ACCESS_VOLUME_WARNING":
+      return "节点高频警告";
+    case "NODE_ACCESS_VOLUME_SUSPEND":
+      return "节点高频暂停";
+    case "NODE_ACCESS_TARGET_WARNING":
+      return "目标分散警告";
+    case "NODE_ACCESS_TARGET_SUSPEND":
+      return "目标分散暂停";
   }
 }
 
@@ -113,7 +121,7 @@ export function SubscriptionAccessRiskSection({
           </span>
           <div>
             <h3 className="text-lg font-semibold tracking-[-0.02em]">订阅访问风控</h3>
-            <p className="mt-0.5 text-sm text-muted-foreground">记录订阅拉取 IP、地区变化和人工处理状态。</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">记录订阅拉取与节点真实连接 IP、地区变化和人工处理状态。</p>
           </div>
         </div>
         <Link href="/admin/subscription-risk" className={buttonVariants({ variant: "outline", size: "sm" })}>

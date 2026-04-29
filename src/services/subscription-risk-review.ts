@@ -142,6 +142,14 @@ export function reasonLabel(reason: SubscriptionRiskReason) {
       return "国家异常警告";
     case "COUNTRY_VARIANCE_SUSPEND":
       return "国家异常暂停";
+    case "NODE_ACCESS_VOLUME_WARNING":
+      return "节点高频警告";
+    case "NODE_ACCESS_VOLUME_SUSPEND":
+      return "节点高频暂停";
+    case "NODE_ACCESS_TARGET_WARNING":
+      return "目标分散警告";
+    case "NODE_ACCESS_TARGET_SUSPEND":
+      return "目标分散暂停";
   }
 }
 
@@ -334,8 +342,8 @@ export function buildSubscriptionRiskReport(input: {
   const userLabel = user ? `${user.email}${user.name ? `（${user.name}）` : ""}` : event.userId ?? "未知用户";
   const windowRange = `${formatDate(event.windowStartedAt)} 至 ${formatDate(event.createdAt)}`;
   const actionSuggestion = event.level === "SUSPENDED"
-    ? "建议保持暂停，等待用户确认是否本人跨地区使用、订阅链接是否外泄，并在工单中补充说明后再解除限制。"
-    : "建议先联系用户确认近期访问来源；如果用户无法解释这些地区/IP，建议重置订阅链接并临时暂停相关订阅。";
+    ? "建议保持暂停，等待用户确认是否本人跨地区使用、订阅链接是否外泄或节点连接是否被共享，并在工单中补充说明后再解除限制。"
+    : "建议先联系用户确认近期访问/连接来源；如果用户无法解释这些地区/IP，建议重置订阅链接并临时暂停相关订阅。";
 
   return [
     "订阅风控风险报告",

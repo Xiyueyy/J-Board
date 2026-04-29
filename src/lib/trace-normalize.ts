@@ -77,6 +77,9 @@ export interface NormalizedTraceHop {
   ip: string;
   geo: string;
   latency: number;
+  asn?: string;
+  owner?: string;
+  isp?: string;
 }
 
 export function normalizeTraceHops(hops: unknown): NormalizedTraceHop[] {
@@ -94,6 +97,9 @@ export function normalizeTraceHops(hops: unknown): NormalizedTraceHop[] {
         ip: normalizeTraceText(hopObject.ip),
         geo: normalizeTraceText(hopObject.geo),
         latency: Math.max(0, toSafeNumber(hopObject.latency, 0)),
+        asn: normalizeTraceText(hopObject.asn) || undefined,
+        owner: normalizeTraceText(hopObject.owner) || undefined,
+        isp: normalizeTraceText(hopObject.isp) || undefined,
       };
     })
     .filter((hop) => hop.ip || hop.geo || hop.latency > 0);
