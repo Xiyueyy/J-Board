@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import type {
+  AppConfig,
   Prisma,
   SubscriptionAccessKind,
   SubscriptionRiskLevel,
@@ -10,12 +11,18 @@ import type { ClientRequestContext } from "@/lib/request-context";
 import { recordAuditLog } from "@/services/audit";
 import { createNotification } from "@/services/notifications";
 import { createPanelAdapter } from "@/services/node-panel/factory";
+import { getAppConfig } from "@/services/app-config";
 
-const RISK_WINDOW_HOURS = 24;
-const CITY_WARNING_COUNT = 4;
-const CITY_SUSPEND_COUNT = 5;
-const REGION_WARNING_COUNT = 2;
-const REGION_SUSPEND_COUNT = 3;
+type SubscriptionRiskConfig = Pick<
+  AppConfig,
+  | "subscriptionRiskEnabled"
+  | "subscriptionRiskAutoSuspend"
+  | "subscriptionRiskWindowHours"
+  | "subscriptionRiskCityWarning"
+  | "subscriptionRiskCitySuspend"
+  | "subscriptionRiskRegionWarning"
+  | "subscriptionRiskRegionSuspend"
+>;
 
 interface RecordSubscriptionAccessInput {
   kind: SubscriptionAccessKind;
@@ -25,6 +32,7 @@ interface RecordSubscriptionAccessInput {
   allowed?: boolean;
   reason?: string | null;
   evaluateRisk?: boolean;
+  riskConfig?: SubscriptionRiskConfig;
 }
 
 interface RiskDecision {
@@ -36,6 +44,14 @@ interface RiskEvaluationResult {
   warned: boolean;
   suspended: boolean;
   eventId?: string;
+}
+
+interface RiskThresholds {
+  cityWarning: number;
+  citySuspend: number;
+  regionWarning: number;
+  regionSuspend: number;
+  autoSuspend: boolean;
 }
 
 function normalizeLocationPart(value: string | null | undefined) {
@@ -90,17 +106,17 @@ function riskMessage(options: {
   return `${scope}访问地区异常，24 小时内出现 ${locationSummary}，最近 IP ${options.ip}，已记录警告。`;
 }
 
-function decideRisk(cityCount: number, regionCount: number): RiskDecision | null {
-  if (regionCount >= REGION_SUSPEND_COUNT) {
+function decideRisk(cityCount: number, regionCount: number, thresholds: RiskThresholds): RiskDecision | null {
+  if (thresholds.autoSuspend && regionCount >= thresholds.regionSuspend) {
     return { level: "SUSPENDED", reason: "REGION_VARIANCE_SUSPEND" };
   }
-  if (cityCount >= CITY_SUSPEND_COUNT) {
+  if (thresholds.autoSuspend && cityCount >= thresholds.citySuspend) {
     return { level: "SUSPENDED", reason: "CITY_VARIANCE_SUSPEND" };
   }
-  if (regionCount >= REGION_WARNING_COUNT) {
+  if (regionCount >= thresholds.regionWarning) {
     return { level: "WARNING", reason: "REGION_VARIANCE_WARNING" };
   }
-  if (cityCount >= CITY_WARNING_COUNT) {
+  if (cityCount >= thresholds.cityWarning) {
     return { level: "WARNING", reason: "CITY_VARIANCE_WARNING" };
   }
 
@@ -142,6 +158,7 @@ async function getTargetLabel(input: { userId?: string | null; subscriptionId?: 
 
 function revalidateRiskViews(subscriptionIds: string[] = []) {
   revalidatePath("/admin/audit-logs");
+  revalidatePath("/admin/subscription-risk");
   revalidatePath("/admin/subscriptions");
   revalidatePath("/subscriptions");
   revalidatePath("/dashboard");
@@ -323,11 +340,22 @@ async function evaluateSubscriptionRisk(input: {
   subscriptionId?: string | null;
   ip: string;
   db: DbClient;
+  config?: SubscriptionRiskConfig;
 }): Promise<RiskEvaluationResult> {
   if (!input.userId) return { warned: false, suspended: false };
   if (input.kind === "SINGLE" && !input.subscriptionId) return { warned: false, suspended: false };
 
-  const windowStartedAt = new Date(Date.now() - RISK_WINDOW_HOURS * 60 * 60 * 1000);
+  const config = input.config ?? await getAppConfig(input.db);
+  if (!config.subscriptionRiskEnabled) return { warned: false, suspended: false };
+
+  const thresholds: RiskThresholds = {
+    cityWarning: config.subscriptionRiskCityWarning,
+    citySuspend: config.subscriptionRiskCitySuspend,
+    regionWarning: config.subscriptionRiskRegionWarning,
+    regionSuspend: config.subscriptionRiskRegionSuspend,
+    autoSuspend: config.subscriptionRiskAutoSuspend,
+  };
+  const windowStartedAt = new Date(Date.now() - config.subscriptionRiskWindowHours * 60 * 60 * 1000);
   const logs = await input.db.subscriptionAccessLog.findMany({
     where: {
       allowed: true,
@@ -371,7 +399,7 @@ async function evaluateSubscriptionRisk(input: {
   const countryLabels = Array.from(countryMap.values());
   const regionLabels = Array.from(regionMap.values());
   const cityLabels = Array.from(cityMap.values());
-  const decision = decideRisk(cityLabels.length, regionLabels.length);
+  const decision = decideRisk(cityLabels.length, regionLabels.length, thresholds);
   if (!decision) return { warned: false, suspended: false };
 
   const message = riskMessage({
@@ -479,5 +507,6 @@ export async function recordSubscriptionAccess(
     subscriptionId: input.subscriptionId,
     ip: input.context.ip,
     db,
+    config: input.riskConfig,
   });
 }

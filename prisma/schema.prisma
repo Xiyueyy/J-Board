@@ -730,35 +730,44 @@ model AuditLog {
 }
 
 model AppConfig {
-  id                              String   @id @default("default")
-  siteName                        String   @default("J-Board")
-  siteUrl                         String?
-  subscriptionUrl                 String?
-  allowRegistration               Boolean  @default(true)
-  emailVerificationRequired       Boolean  @default(false)
-  requireInviteCode               Boolean  @default(false)
-  supportContact                  String?
-  maintenanceNotice               String?
-  siteNotice                      String?
-  autoReminderDispatchEnabled     Boolean  @default(true)
-  reminderDispatchIntervalMinutes Int      @default(60)
-  trafficSyncEnabled              Boolean  @default(true)
-  trafficSyncIntervalSeconds      Int      @default(60)
-  inviteRewardCouponId            String?
-  inviteRewardRate                Decimal  @default(0) @db.Decimal(5, 2)
-  inviteRewardEnabled             Boolean  @default(false)
-  turnstileSiteKey                String?
-  turnstileSecretKey              String?
-  smtpEnabled                     Boolean  @default(false)
-  smtpHost                        String?
-  smtpPort                        Int      @default(587)
-  smtpSecure                      Boolean  @default(false)
-  smtpUser                        String?
-  smtpPassword                    String?
-  smtpFromName                    String?
-  smtpFromEmail                   String?
-  createdAt                       DateTime @default(now())
-  updatedAt                       DateTime @updatedAt
+  id                                String   @id @default("default")
+  siteName                          String   @default("J-Board")
+  siteUrl                           String?
+  subscriptionUrl                   String?
+  allowRegistration                 Boolean  @default(true)
+  emailVerificationRequired         Boolean  @default(false)
+  requireInviteCode                 Boolean  @default(false)
+  supportContact                    String?
+  maintenanceNotice                 String?
+  siteNotice                        String?
+  autoReminderDispatchEnabled       Boolean  @default(true)
+  reminderDispatchIntervalMinutes   Int      @default(60)
+  trafficSyncEnabled                Boolean  @default(true)
+  trafficSyncIntervalSeconds        Int      @default(60)
+  subscriptionRiskEnabled           Boolean  @default(true)
+  subscriptionRiskAutoSuspend       Boolean  @default(true)
+  subscriptionRiskWindowHours       Int      @default(24)
+  subscriptionRiskCityWarning       Int      @default(4)
+  subscriptionRiskCitySuspend       Int      @default(5)
+  subscriptionRiskRegionWarning     Int      @default(2)
+  subscriptionRiskRegionSuspend     Int      @default(3)
+  subscriptionRiskIpLimitPerHour    Int      @default(180)
+  subscriptionRiskTokenLimitPerHour Int      @default(60)
+  inviteRewardCouponId              String?
+  inviteRewardRate                  Decimal  @default(0) @db.Decimal(5, 2)
+  inviteRewardEnabled               Boolean  @default(false)
+  turnstileSiteKey                  String?
+  turnstileSecretKey                String?
+  smtpEnabled                       Boolean  @default(false)
+  smtpHost                          String?
+  smtpPort                          Int      @default(587)
+  smtpSecure                        Boolean  @default(false)
+  smtpUser                          String?
+  smtpPassword                      String?
+  smtpFromName                      String?
+  smtpFromEmail                     String?
+  createdAt                         DateTime @default(now())
+  updatedAt                         DateTime @updatedAt
 }
 
 model Announcement {

@@ -7,9 +7,8 @@ import { prisma } from "@/lib/prisma";
 import { rateLimit } from "@/lib/rate-limit";
 import { getClientRequestContext } from "@/lib/request-context";
 import { recordSubscriptionAccess } from "@/services/subscription-risk";
+import { getAppConfig } from "@/services/app-config";
 
-const AGGREGATE_TOKEN_LIMIT = 60;
-const SUBSCRIPTION_IP_LIMIT = 180;
 const SUBSCRIPTION_RATE_WINDOW_SECONDS = 60 * 60;
 
 function jsonError(message: string, status: number) {
@@ -21,22 +20,25 @@ export async function GET(req: Request) {
   const userId = url.searchParams.get("userId") ?? url.searchParams.get("user");
   const token = url.searchParams.get("token");
   const context = getClientRequestContext(req.headers);
+  const config = await getAppConfig();
 
-  const ipLimit = await rateLimit(
-    `ratelimit:subscription:ip:${context.ip}`,
-    SUBSCRIPTION_IP_LIMIT,
-    SUBSCRIPTION_RATE_WINDOW_SECONDS,
-  );
+  if (config.subscriptionRiskEnabled) {
+    const ipLimit = await rateLimit(
+      `ratelimit:subscription:ip:${context.ip}`,
+      config.subscriptionRiskIpLimitPerHour,
+      SUBSCRIPTION_RATE_WINDOW_SECONDS,
+    );
 
-  if (!ipLimit.success) {
-    await recordSubscriptionAccess({
-      kind: "AGGREGATE",
-      context,
-      userId,
-      allowed: false,
-      reason: "rate_limited",
-    });
-    return jsonError("Too many subscription requests", 429);
+    if (!ipLimit.success) {
+      await recordSubscriptionAccess({
+        kind: "AGGREGATE",
+        context,
+        userId,
+        allowed: false,
+        reason: "rate_limited",
+      });
+      return jsonError("Too many subscription requests", 429);
+    }
   }
 
   if (!userId || !token) {
@@ -66,21 +68,23 @@ export async function GET(req: Request) {
     return jsonError("Invalid subscription token", 401);
   }
 
-  const tokenLimit = await rateLimit(
-    `ratelimit:subscription:aggregate:${userId}`,
-    AGGREGATE_TOKEN_LIMIT,
-    SUBSCRIPTION_RATE_WINDOW_SECONDS,
-  );
+  if (config.subscriptionRiskEnabled) {
+    const tokenLimit = await rateLimit(
+      `ratelimit:subscription:aggregate:${userId}`,
+      config.subscriptionRiskTokenLimitPerHour,
+      SUBSCRIPTION_RATE_WINDOW_SECONDS,
+    );
 
-  if (!tokenLimit.success) {
-    await recordSubscriptionAccess({
-      kind: "AGGREGATE",
-      context,
-      userId,
-      allowed: false,
-      reason: "rate_limited",
-    });
-    return jsonError("Too many subscription requests", 429);
+    if (!tokenLimit.success) {
+      await recordSubscriptionAccess({
+        kind: "AGGREGATE",
+        context,
+        userId,
+        allowed: false,
+        reason: "rate_limited",
+      });
+      return jsonError("Too many subscription requests", 429);
+    }
   }
 
   if (user.status !== "ACTIVE") {
@@ -98,6 +102,8 @@ export async function GET(req: Request) {
     kind: "AGGREGATE",
     context,
     userId,
+    evaluateRisk: config.subscriptionRiskEnabled,
+    riskConfig: config,
   });
 
   if (risk.suspended) {

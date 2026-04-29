@@ -4,9 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { rateLimit } from "@/lib/rate-limit";
 import { getClientRequestContext } from "@/lib/request-context";
 import { recordSubscriptionAccess } from "@/services/subscription-risk";
+import { getAppConfig } from "@/services/app-config";
 
-const SUBSCRIPTION_TOKEN_LIMIT = 60;
-const SUBSCRIPTION_IP_LIMIT = 180;
 const SUBSCRIPTION_RATE_WINDOW_SECONDS = 60 * 60;
 
 function jsonError(message: string, status: number) {
@@ -22,33 +21,38 @@ export async function GET(
   const token = url.searchParams.get("token");
   const context = getClientRequestContext(req.headers);
 
-  const sub = await prisma.userSubscription.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      userId: true,
-      downloadToken: true,
-      status: true,
-      plan: { select: { type: true } },
-    },
-  });
+  const [sub, config] = await Promise.all([
+    prisma.userSubscription.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        userId: true,
+        downloadToken: true,
+        status: true,
+        plan: { select: { type: true } },
+      },
+    }),
+    getAppConfig(),
+  ]);
 
-  const ipLimit = await rateLimit(
-    `ratelimit:subscription:ip:${context.ip}`,
-    SUBSCRIPTION_IP_LIMIT,
-    SUBSCRIPTION_RATE_WINDOW_SECONDS,
-  );
+  if (config.subscriptionRiskEnabled) {
+    const ipLimit = await rateLimit(
+      `ratelimit:subscription:ip:${context.ip}`,
+      config.subscriptionRiskIpLimitPerHour,
+      SUBSCRIPTION_RATE_WINDOW_SECONDS,
+    );
 
-  if (!ipLimit.success) {
-    await recordSubscriptionAccess({
-      kind: "SINGLE",
-      context,
-      userId: sub?.userId,
-      subscriptionId: sub?.id ?? id,
-      allowed: false,
-      reason: "rate_limited",
-    });
-    return jsonError("Too many subscription requests", 429);
+    if (!ipLimit.success) {
+      await recordSubscriptionAccess({
+        kind: "SINGLE",
+        context,
+        userId: sub?.userId,
+        subscriptionId: sub?.id ?? id,
+        allowed: false,
+        reason: "rate_limited",
+      });
+      return jsonError("Too many subscription requests", 429);
+    }
   }
 
   if (!token) {
@@ -75,22 +79,24 @@ export async function GET(
     return jsonError("Invalid token", 401);
   }
 
-  const tokenLimit = await rateLimit(
-    `ratelimit:subscription:single:${sub.id}`,
-    SUBSCRIPTION_TOKEN_LIMIT,
-    SUBSCRIPTION_RATE_WINDOW_SECONDS,
-  );
+  if (config.subscriptionRiskEnabled) {
+    const tokenLimit = await rateLimit(
+      `ratelimit:subscription:single:${sub.id}`,
+      config.subscriptionRiskTokenLimitPerHour,
+      SUBSCRIPTION_RATE_WINDOW_SECONDS,
+    );
 
-  if (!tokenLimit.success) {
-    await recordSubscriptionAccess({
-      kind: "SINGLE",
-      context,
-      userId: sub.userId,
-      subscriptionId: sub.id,
-      allowed: false,
-      reason: "rate_limited",
-    });
-    return jsonError("Too many subscription requests", 429);
+    if (!tokenLimit.success) {
+      await recordSubscriptionAccess({
+        kind: "SINGLE",
+        context,
+        userId: sub.userId,
+        subscriptionId: sub.id,
+        allowed: false,
+        reason: "rate_limited",
+      });
+      return jsonError("Too many subscription requests", 429);
+    }
   }
 
   if (sub.status !== "ACTIVE") {
@@ -110,7 +116,8 @@ export async function GET(
     context,
     userId: sub.userId,
     subscriptionId: sub.id,
-    evaluateRisk: sub.plan.type === "PROXY",
+    evaluateRisk: config.subscriptionRiskEnabled && sub.plan.type === "PROXY",
+    riskConfig: config,
   });
 
   if (risk.suspended) {

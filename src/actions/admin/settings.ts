@@ -25,6 +25,15 @@ const settingsSchema = z.object({
   reminderDispatchIntervalMinutes: z.coerce.number().int().positive().optional(),
   trafficSyncEnabled: z.string().optional(),
   trafficSyncIntervalSeconds: z.coerce.number().int().min(10).optional(),
+  subscriptionRiskEnabled: z.string().optional(),
+  subscriptionRiskAutoSuspend: z.string().optional(),
+  subscriptionRiskWindowHours: z.coerce.number().int().min(1).max(168).optional(),
+  subscriptionRiskCityWarning: z.coerce.number().int().min(2).max(100).optional(),
+  subscriptionRiskCitySuspend: z.coerce.number().int().min(2).max(100).optional(),
+  subscriptionRiskRegionWarning: z.coerce.number().int().min(2).max(100).optional(),
+  subscriptionRiskRegionSuspend: z.coerce.number().int().min(2).max(100).optional(),
+  subscriptionRiskIpLimitPerHour: z.coerce.number().int().min(1).max(100000).optional(),
+  subscriptionRiskTokenLimitPerHour: z.coerce.number().int().min(1).max(100000).optional(),
   inviteRewardEnabled: z.string().optional(),
   inviteRewardRate: z.coerce.number().min(0).max(100).optional(),
   inviteRewardCouponId: z.string().trim().optional(),
@@ -102,6 +111,22 @@ function buildSettingsUpdate(parsed: z.infer<typeof settingsSchema>, current: Aw
     trafficSyncEnabled: parsed.trafficSyncEnabled === "true",
     trafficSyncIntervalSeconds:
       parsed.trafficSyncIntervalSeconds ?? current.trafficSyncIntervalSeconds,
+    subscriptionRiskEnabled: parsed.subscriptionRiskEnabled === "true",
+    subscriptionRiskAutoSuspend: parsed.subscriptionRiskAutoSuspend === "true",
+    subscriptionRiskWindowHours:
+      parsed.subscriptionRiskWindowHours ?? current.subscriptionRiskWindowHours,
+    subscriptionRiskCityWarning:
+      parsed.subscriptionRiskCityWarning ?? current.subscriptionRiskCityWarning,
+    subscriptionRiskCitySuspend:
+      parsed.subscriptionRiskCitySuspend ?? current.subscriptionRiskCitySuspend,
+    subscriptionRiskRegionWarning:
+      parsed.subscriptionRiskRegionWarning ?? current.subscriptionRiskRegionWarning,
+    subscriptionRiskRegionSuspend:
+      parsed.subscriptionRiskRegionSuspend ?? current.subscriptionRiskRegionSuspend,
+    subscriptionRiskIpLimitPerHour:
+      parsed.subscriptionRiskIpLimitPerHour ?? current.subscriptionRiskIpLimitPerHour,
+    subscriptionRiskTokenLimitPerHour:
+      parsed.subscriptionRiskTokenLimitPerHour ?? current.subscriptionRiskTokenLimitPerHour,
     inviteRewardEnabled: parsed.inviteRewardEnabled === "true",
     inviteRewardRate: parsed.inviteRewardRate ?? Number(current.inviteRewardRate),
     inviteRewardCouponId: parsed.inviteRewardCouponId || null,
@@ -116,6 +141,13 @@ function buildSettingsUpdate(parsed: z.infer<typeof settingsSchema>, current: Aw
     smtpFromName: parsed.smtpFromName || null,
     smtpFromEmail: parsed.smtpFromEmail || null,
   };
+
+  if (next.subscriptionRiskCitySuspend < next.subscriptionRiskCityWarning) {
+    throw new Error("城市暂停阈值不能小于城市警告阈值");
+  }
+  if (next.subscriptionRiskRegionSuspend < next.subscriptionRiskRegionWarning) {
+    throw new Error("省/地区暂停阈值不能小于省/地区警告阈值");
+  }
 
   if (next.smtpEnabled || next.emailVerificationRequired) {
     if (!next.smtpHost || !next.smtpPort || !next.smtpFromEmail) {
@@ -138,6 +170,8 @@ function revalidateSettingsViews() {
   revalidatePath("/admin/nodes");
   revalidatePath("/account");
   revalidatePath("/admin/commerce");
+  revalidatePath("/admin/subscription-risk");
+  revalidatePath("/admin/subscriptions");
 }
 
 async function persistAppSettings(
