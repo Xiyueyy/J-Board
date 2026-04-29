@@ -36,6 +36,7 @@ RUN adduser --system --uid 1001 nextjs
 # Next.js standalone output
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/data ./data
 
 # Prisma: schema + config + generated client + adapter
 COPY --from=builder /app/prisma ./prisma

@@ -1,6 +1,13 @@
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { isIP } from "node:net";
+import { Reader, type CityResponse, type CountryResponse } from "maxmind";
 
 type HeaderReader = Pick<Headers, "get">;
+type GeoIpResponse = CityResponse | CountryResponse;
+
+
+let geoIpReader: Reader<GeoIpResponse> | null | undefined;
 
 export interface RequestGeoContext {
   country: string | null;
@@ -16,6 +23,112 @@ export interface ClientRequestContext {
   ip: string;
   userAgent: string | null;
   geo: RequestGeoContext;
+}
+
+function emptyGeoContext(source: string | null = null): RequestGeoContext {
+  return {
+    country: null,
+    region: null,
+    regionCode: null,
+    city: null,
+    latitude: null,
+    longitude: null,
+    source,
+  };
+}
+
+function hasGeoValue(geo: RequestGeoContext) {
+  return Boolean(geo.country || geo.region || geo.regionCode || geo.city || geo.latitude || geo.longitude);
+}
+
+function resolveGeoIpDatabasePath() {
+  const configured = process.env.GEOIP_MMDB_PATH?.trim();
+  if (!configured) {
+    return path.join(process.cwd(), "data", "GeoLite2-City.mmdb");
+  }
+
+  return path.isAbsolute(configured)
+    ? configured
+    : path.join(/* turbopackIgnore: true */ process.cwd(), configured);
+}
+
+function getGeoIpReader() {
+  if (geoIpReader !== undefined) return geoIpReader;
+
+  const databasePath = resolveGeoIpDatabasePath();
+  if (!existsSync(/* turbopackIgnore: true */ databasePath)) {
+    geoIpReader = null;
+    return geoIpReader;
+  }
+
+  try {
+    geoIpReader = new Reader<GeoIpResponse>(readFileSync(/* turbopackIgnore: true */ databasePath));
+  } catch (error) {
+    geoIpReader = null;
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("Failed to load GeoIP MMDB database:", error);
+    }
+  }
+
+  return geoIpReader;
+}
+
+function localizedName(record: { names?: object } | null | undefined) {
+  if (!record?.names) return null;
+  const names = record.names as { "zh-CN"?: string; en?: string };
+  return names["zh-CN"] ?? names.en ?? Object.values(names).find((value) => typeof value === "string") ?? null;
+}
+
+function getGeoIpLocation(ip: string): RequestGeoContext {
+  if (ip === "unknown" || !isIP(ip)) return emptyGeoContext();
+
+  const reader = getGeoIpReader();
+  if (!reader) return emptyGeoContext();
+
+  const record = reader.get(ip);
+  if (!record) return emptyGeoContext();
+
+  const country = record.country ?? record.registered_country ?? null;
+  const cityRecord = "city" in record ? record.city : null;
+  const subdivision = "subdivisions" in record ? record.subdivisions?.[0] : null;
+  const location = "location" in record ? record.location : null;
+
+  const geo = {
+    country: country?.iso_code ?? localizedName(country),
+    region: localizedName(subdivision),
+    regionCode: subdivision?.iso_code ?? null,
+    city: localizedName(cityRecord),
+    latitude: location?.latitude == null ? null : String(location.latitude),
+    longitude: location?.longitude == null ? null : String(location.longitude),
+    source: "mmdb",
+  } satisfies RequestGeoContext;
+
+  return hasGeoValue(geo) ? geo : emptyGeoContext();
+}
+
+function sameCountry(headerGeo: RequestGeoContext, mmdbGeo: RequestGeoContext) {
+  if (!headerGeo.country || !mmdbGeo.country) return true;
+  return headerGeo.country.trim().toLowerCase() === mmdbGeo.country.trim().toLowerCase();
+}
+
+function mergeGeoContext(headerGeo: RequestGeoContext, mmdbGeo: RequestGeoContext): RequestGeoContext {
+  const useMmdb = sameCountry(headerGeo, mmdbGeo);
+  const merged: RequestGeoContext = {
+    country: headerGeo.country ?? (useMmdb ? mmdbGeo.country : null),
+    region: headerGeo.region ?? (useMmdb ? mmdbGeo.region : null),
+    regionCode: headerGeo.regionCode ?? (useMmdb ? mmdbGeo.regionCode : null),
+    city: headerGeo.city ?? (useMmdb ? mmdbGeo.city : null),
+    latitude: headerGeo.latitude ?? (useMmdb ? mmdbGeo.latitude : null),
+    longitude: headerGeo.longitude ?? (useMmdb ? mmdbGeo.longitude : null),
+    source: null,
+  };
+
+  const sources = new Set<string>();
+  if (hasGeoValue(headerGeo) && headerGeo.source) sources.add(headerGeo.source);
+  if (useMmdb && hasGeoValue(mmdbGeo)) sources.add("mmdb");
+  merged.source = sources.size > 0 ? Array.from(sources).join("+") : null;
+
+  return merged;
 }
 
 function firstHeader(headers: HeaderReader, names: string[]) {
@@ -84,7 +197,7 @@ export function getClientIp(headers: HeaderReader) {
   return "unknown";
 }
 
-export function getRequestGeo(headers: HeaderReader): RequestGeoContext {
+export function getRequestGeo(headers: HeaderReader, ip = "unknown"): RequestGeoContext {
   const country = decodeHeaderValue(firstHeader(headers, [
     "cf-ipcountry",
     "x-vercel-ip-country",
@@ -130,13 +243,15 @@ export function getRequestGeo(headers: HeaderReader): RequestGeoContext {
     source = "proxy";
   }
 
-  return { country, region, regionCode, city, latitude, longitude, source };
+  const headerGeo = { country, region, regionCode, city, latitude, longitude, source };
+  return mergeGeoContext(headerGeo, getGeoIpLocation(ip));
 }
 
 export function getClientRequestContext(headers: HeaderReader): ClientRequestContext {
+  const ip = getClientIp(headers);
   return {
-    ip: getClientIp(headers),
+    ip,
     userAgent: headers.get("user-agent")?.slice(0, 500) ?? null,
-    geo: getRequestGeo(headers),
+    geo: getRequestGeo(headers, ip),
   };
 }
