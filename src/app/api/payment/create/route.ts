@@ -73,7 +73,7 @@ export async function POST(req: Request) {
 
     const baseUrl = await getSiteBaseUrl({ headers: req.headers, requestUrl: req.url });
     if (!baseUrl) {
-      return jsonError("请先在后台系统设置里配置站点域名", { status: 400 });
+      return jsonError("请先在后台系统设置里配置网站 URL", { status: 400 });
     }
     const result = await adapter.createPayment({
       tradeNo,

@@ -166,7 +166,7 @@ export function NodeActions({ node, siteUrl }: { node: NodeActionValue; siteUrl:
 
             {!siteUrl && (
               <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-700 dark:text-amber-200">
-                建议先到系统设置填写站点域名，否则从本地地址打开后台时命令会带本机地址。
+                建议先到系统设置填写网站 URL，否则从本地地址打开后台时命令会带本机地址。
               </p>
             )}
             <p className="text-xs leading-5 text-muted-foreground">

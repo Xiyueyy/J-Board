@@ -132,7 +132,7 @@ async function buildActionUrl(pathname: string, token: string, options: { header
     allowRequestFallback: true,
   });
   if (!baseUrl) {
-    throw new Error("请先在系统设置中填写站点域名");
+    throw new Error("请先在系统设置中填写网站 URL");
   }
 
   const url = new URL(pathname, baseUrl);

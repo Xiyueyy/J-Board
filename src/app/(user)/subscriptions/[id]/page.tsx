@@ -7,7 +7,7 @@ import { PageHeader, PageShell, SectionHeader } from "@/components/shared/page-s
 import { SubscriptionDetailCards } from "@/components/subscriptions/subscription-detail-cards";
 import { SubscriptionTimelineSection } from "@/components/subscriptions/subscription-timeline-section";
 import { TrafficLogs } from "./_components/traffic-logs";
-import { getSiteBaseUrl } from "@/services/site-url";
+import { getSubscriptionBaseUrl } from "@/services/site-url";
 import { ProxySubscriptionDetails } from "../_components/proxy-subscription-details";
 import { StreamingCredentialCard } from "../streaming-credential-card";
 import { getUserSubscriptionDetail } from "./subscription-detail-data";
@@ -30,7 +30,7 @@ export default async function UserSubscriptionDetailPage({
       subscriptionId: id,
       userId: session!.user.id,
     }),
-    getSiteBaseUrl({ headers: requestHeaders }),
+    getSubscriptionBaseUrl({ headers: requestHeaders }),
   ]);
 
   if (!data) {

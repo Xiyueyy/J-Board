@@ -17,6 +17,7 @@ async function main() {
   const adminName = envValue("ADMIN_NAME", "Admin");
   const siteName = envValue("SITE_NAME", "J-Board");
   const siteUrl = process.env.NEXTAUTH_URL?.trim() || null;
+  const subscriptionUrl = process.env.SUBSCRIPTION_URL?.trim() || null;
   const hashedPassword = await bcrypt.hash(adminPassword, 12);
 
   await prisma.appConfig.upsert({
@@ -24,11 +25,13 @@ async function main() {
     update: {
       siteName,
       siteUrl,
+      subscriptionUrl,
     },
     create: {
       id: "default",
       siteName,
       siteUrl,
+      subscriptionUrl,
     },
   });
 

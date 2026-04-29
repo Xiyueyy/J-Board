@@ -9,6 +9,7 @@ SKIP_DOCKER_INSTALL="${SKIP_DOCKER_INSTALL:-0}"
 
 APP_PORT=""
 PUBLIC_URL=""
+SUBSCRIPTION_PUBLIC_URL=""
 SITE_NAME=""
 ADMIN_EMAIL=""
 ADMIN_PASSWORD=""
@@ -264,6 +265,7 @@ load_existing_env() {
     fi
     APP_PORT="${APP_PORT:-3000}"
     PUBLIC_URL="${NEXTAUTH_URL:-}"
+    SUBSCRIPTION_PUBLIC_URL="${SUBSCRIPTION_URL:-}"
     SITE_NAME="${SITE_NAME:-J-Board}"
     ADMIN_EMAIL="${ADMIN_EMAIL:-admin@jboard.local}"
     ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
@@ -289,6 +291,7 @@ write_env() {
     printf '\n# NextAuth\n'
     printf 'NEXTAUTH_SECRET="%s"\n' "$(env_escape "$NEXTAUTH_SECRET")"
     printf 'NEXTAUTH_URL="%s"\n' "$(env_escape "$PUBLIC_URL")"
+    printf 'SUBSCRIPTION_URL="%s"\n' "$(env_escape "$SUBSCRIPTION_PUBLIC_URL")"
     printf '\n# Must be at least 32 bytes, used for AES-256-GCM encryption\n'
     printf 'ENCRYPTION_KEY="%s"\n' "$(env_escape "$ENCRYPTION_KEY")"
     printf '\n# Redis connection URL for local tools; Docker Compose overrides host to redis\n'
@@ -330,8 +333,10 @@ configure_env() {
   default_url="http://${ip}:3000"
 
   SITE_NAME="$(prompt_value "站点名称" "J-Board")"
-  PUBLIC_URL="$(prompt_value "公网访问地址" "$default_url" "这里请填写你准备反向代理到本机 3000 端口的正式域名，例如 https://panel.example.com。没有域名时可先回车用 IP:3000 测试。")"
+  PUBLIC_URL="$(prompt_value "网站访问地址" "$default_url" "这里请填写你准备反向代理到本机 3000 端口的面板域名，例如 https://panel.example.com。没有域名时可先回车用 IP:3000 测试。")"
   PUBLIC_URL="$(normalize_url "$PUBLIC_URL")"
+  SUBSCRIPTION_PUBLIC_URL="$(prompt_value "订阅访问地址" "$PUBLIC_URL" "用于生成客户端订阅链接。可以和网站地址相同，也可以填单独反代到本面板的订阅域名，例如 https://sub.example.com。")"
+  SUBSCRIPTION_PUBLIC_URL="$(normalize_url "$SUBSCRIPTION_PUBLIC_URL")"
   APP_PORT="$(prompt_value "本机监听端口" "3000" "反向代理目标会是 http://127.0.0.1:端口，默认 3000。")"
   ADMIN_EMAIL="$(prompt_value "管理员邮箱" "admin@jboard.local")"
   ADMIN_PASSWORD="$(prompt_generated "管理员密码" "$(random_password)" "回车会生成一个安全密码，部署完成后会在结果中显示一次。")"
@@ -389,13 +394,14 @@ print_summary() {
   printf '%s\n' "J-Board 部署完成"
   printf '%s\n' "============================================================"
   printf '访问地址：%s\n' "${PUBLIC_URL:-http://127.0.0.1:${APP_PORT:-3000}}"
+  printf '订阅地址：%s\n' "${SUBSCRIPTION_PUBLIC_URL:-${PUBLIC_URL:-http://127.0.0.1:${APP_PORT:-3000}}}"
   printf '反代目标：%s\n' "$proxy_target"
   printf '管理员邮箱：%s\n' "${ADMIN_EMAIL:-admin@jboard.local}"
   printf '管理员密码：%s\n' "$shown_password"
   echo
   printf '%s\n' "反向代理提示"
-  printf '  将你的域名解析到这台服务器，并把 Web 反向代理到 %s。\n' "$proxy_target"
-  printf '  NEXTAUTH_URL 与后台系统设置中的站点域名都应使用这个公网域名。\n'
+  printf '  将你的面板域名解析到这台服务器，并把 Web 反向代理到 %s。\n' "$proxy_target"
+  printf '  如果使用独立订阅域名，也把它反向代理到同一个目标，并在后台系统设置中填写订阅 URL。\n'
   echo
   printf '%s\n' "可以展示给用户的入口"
   printf '  首页 / 登录：%s/login\n' "${PUBLIC_URL%/}"
@@ -404,7 +410,7 @@ print_summary() {
   printf '  用户中心：%s/dashboard\n' "${PUBLIC_URL%/}"
   echo
   printf '%s\n' "上线前建议完成"
-  printf '  1. 后台 /admin/settings：确认站点域名、SMTP 邮件服务、注册策略。\n'
+  printf '  1. 后台 /admin/settings：确认网站 URL、订阅 URL、SMTP 邮件服务、注册策略。\n'
   printf '  2. 后台 /admin/payments：配置并启用支付方式。\n'
   printf '  3. 后台 /admin/nodes：添加 3x-ui 节点并同步入站。\n'
   printf '  4. 后台 /admin/plans：创建套餐并绑定入站或流媒体服务。\n'

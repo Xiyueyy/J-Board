@@ -654,6 +654,7 @@ model AppConfig {
   id                              String   @id @default("default")
   siteName                        String   @default("J-Board")
   siteUrl                         String?
+  subscriptionUrl                 String?
   allowRegistration               Boolean  @default(true)
   emailVerificationRequired       Boolean  @default(false)
   requireInviteCode               Boolean  @default(false)

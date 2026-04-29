@@ -14,6 +14,7 @@ import { sendSmtpTestEmail } from "@/services/email";
 const settingsSchema = z.object({
   siteName: z.string().trim().min(1, "站点名称不能为空"),
   siteUrl: z.string().trim().optional(),
+  subscriptionUrl: z.string().trim().optional(),
   supportContact: z.string().trim().optional(),
   maintenanceNotice: z.string().trim().optional(),
   siteNotice: z.string().trim().optional(),
@@ -88,6 +89,7 @@ function buildSettingsUpdate(parsed: z.infer<typeof settingsSchema>, current: Aw
   const next = {
     siteName: parsed.siteName,
     siteUrl: normalizeSiteUrl(parsed.siteUrl) || null,
+    subscriptionUrl: normalizeSiteUrl(parsed.subscriptionUrl) || null,
     supportContact: parsed.supportContact || null,
     maintenanceNotice: parsed.maintenanceNotice || null,
     siteNotice: parsed.siteNotice || null,

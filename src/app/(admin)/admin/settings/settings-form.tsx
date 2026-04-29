@@ -14,6 +14,7 @@ import { getErrorMessage } from "@/lib/errors";
 interface AppConfig {
   siteName: string;
   siteUrl: string | null;
+  subscriptionUrl: string | null;
   supportContact: string | null;
   maintenanceNotice: string | null;
   siteNotice: string | null;
@@ -130,9 +131,14 @@ export function SettingsForm({ config, coupons }: { config: AppConfig; coupons: 
             <Input id="siteName" name="siteName" defaultValue={config.siteName} required />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="siteUrl">站点域名 / URL</Label>
-            <Input id="siteUrl" name="siteUrl" defaultValue={config.siteUrl ?? ""} placeholder="https://example.com" />
-            <p className="text-xs leading-5 text-muted-foreground">用于订阅链接、支付回调和 Agent 一键安装命令，反代后建议填写公网域名。</p>
+            <Label htmlFor="siteUrl">网站 URL</Label>
+            <Input id="siteUrl" name="siteUrl" defaultValue={config.siteUrl ?? ""} placeholder="https://panel.example.com" />
+            <p className="text-xs leading-5 text-muted-foreground">用于登录、邮件链接、支付回跳和 Agent 安装命令。请填写准备反代到面板的公网域名。</p>
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="subscriptionUrl">订阅 URL</Label>
+            <Input id="subscriptionUrl" name="subscriptionUrl" defaultValue={config.subscriptionUrl ?? ""} placeholder="https://sub.example.com" />
+            <p className="text-xs leading-5 text-muted-foreground">只用于生成客户端订阅链接。可与网站 URL 相同，也可单独使用 sub 域名，便于 Cloudflare/WAF 和访问风控独立配置。</p>
           </div>
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="supportContact">客服联系方式</Label>

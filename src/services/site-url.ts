@@ -18,14 +18,14 @@ export function normalizeSiteUrl(raw: string | null | undefined): string | null 
   try {
     url = new URL(withProtocol);
   } catch {
-    throw new Error("站点域名格式不正确，请填写 https://example.com");
+    throw new Error("URL 格式不正确，请填写 https://example.com");
   }
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("站点域名仅支持 http:// 或 https://");
+    throw new Error("URL 仅支持 http:// 或 https://");
   }
   if (!url.hostname) {
-    throw new Error("站点域名不能为空");
+    throw new Error("URL 主机不能为空");
   }
 
   url.search = "";
@@ -79,6 +79,14 @@ export async function getConfiguredSiteUrl(db: DbClient = prisma): Promise<strin
   return safeNormalizeSiteUrl(config.siteUrl) ?? safeNormalizeSiteUrl(process.env.NEXTAUTH_URL);
 }
 
+export async function getConfiguredSubscriptionUrl(db: DbClient = prisma): Promise<string | null> {
+  const config = await getAppConfig(db);
+  return safeNormalizeSiteUrl(config.subscriptionUrl)
+    ?? safeNormalizeSiteUrl(process.env.SUBSCRIPTION_URL)
+    ?? safeNormalizeSiteUrl(config.siteUrl)
+    ?? safeNormalizeSiteUrl(process.env.NEXTAUTH_URL);
+}
+
 export async function getSiteBaseUrl(options: {
   headers?: Headers;
   requestUrl?: string;
@@ -86,6 +94,21 @@ export async function getSiteBaseUrl(options: {
   allowRequestFallback?: boolean;
 } = {}): Promise<string> {
   const configured = await getConfiguredSiteUrl(options.db ?? prisma);
+  if (configured) return configured;
+  if (!options.allowRequestFallback) return "";
+
+  return (
+    options.headers ? getForwardedSiteUrl(options.headers) : null
+  ) ?? getRequestOriginUrl(options.requestUrl) ?? "";
+}
+
+export async function getSubscriptionBaseUrl(options: {
+  headers?: Headers;
+  requestUrl?: string;
+  db?: DbClient;
+  allowRequestFallback?: boolean;
+} = {}): Promise<string> {
+  const configured = await getConfiguredSubscriptionUrl(options.db ?? prisma);
   if (configured) return configured;
   if (!options.allowRequestFallback) return "";
 

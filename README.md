@@ -100,7 +100,8 @@ J-Board 只保存售卖和展示所需的节点、入站、客户端镜像数据
 | --- | --- | --- |
 | `APP_PORT` | 面板监听端口 | 默认 `3000`。反向代理应转发到 `http://127.0.0.1:APP_PORT`。 |
 | `SITE_NAME` | 站点名称 | 初始化系统设置和邮件模板会使用。 |
-| `NEXTAUTH_URL` | 公网访问地址 | 必须填写你准备反代到面板的正式域名，例如 `https://panel.example.com`。不要填容器内地址。 |
+| `NEXTAUTH_URL` | 网站访问地址 | 必须填写你准备反代到面板的正式域名，例如 `https://panel.example.com`。不要填容器内地址。 |
+| `SUBSCRIPTION_URL` | 订阅访问地址 | 可选。用于生成客户端订阅链接，例如 `https://sub.example.com`；留空时复用 `NEXTAUTH_URL`。如果使用独立订阅域名，也要反代到同一个面板服务。 |
 | `NEXTAUTH_SECRET` | 登录会话密钥 | 生产环境必须使用随机长字符串。 |
 | `ENCRYPTION_KEY` | 敏感信息加密密钥 | 至少 32 字节。生产使用后不要更换，否则 3x-ui 密码、探测 Token、流媒体凭据等已加密数据会无法解密。 |
 | `DATABASE_URL` | PostgreSQL 连接 | 本地工具使用；Docker 部署时 Compose 会覆盖为容器内数据库地址。 |
@@ -157,7 +158,8 @@ curl -fsSL https://raw.githubusercontent.com/JetSprow/J-Board/main/scripts/insta
 | --- | --- |
 | 安装目录 | 默认 `/opt/jboard`；如果在仓库内运行脚本则默认当前仓库。 |
 | 站点名称 | 面板标题、邮件模板和初始化系统设置会使用。 |
-| 公网访问地址 | 你准备反向代理到本机 `3000` 端口的域名，例如 `https://panel.example.com`。没有域名时可先用 `http://服务器IP:3000` 测试。 |
+| 网站访问地址 | 你准备反向代理到本机 `3000` 端口的面板域名，例如 `https://panel.example.com`。没有域名时可先用 `http://服务器IP:3000` 测试。 |
+| 订阅访问地址 | 用于生成 Clash/V2rayN/Shadowrocket 等客户端订阅链接。可与网站访问地址相同，也可填独立订阅域名，例如 `https://sub.example.com`。 |
 | 本机监听端口 | 默认 `3000`，Nginx/Caddy/宝塔反代目标就是 `http://127.0.0.1:3000`。 |
 | 管理员邮箱和密码 | 首次初始化会创建该管理员，脚本完成后会再次打印。 |
 | PostgreSQL 密码、`NEXTAUTH_SECRET`、`ENCRYPTION_KEY` | 可手动输入；回车会自动生成安全值。 |
@@ -172,6 +174,7 @@ APP_DIR=/opt/jboard GH_REPO=JetSprow/J-Board BRANCH=main bash <(curl -fsSL https
 
 ```text
 访问地址：https://panel.example.com
+订阅地址：https://sub.example.com
 反代目标：http://127.0.0.1:3000
 管理员邮箱：admin@example.com
 管理员密码：自动生成或你输入的密码
@@ -179,14 +182,16 @@ APP_DIR=/opt/jboard GH_REPO=JetSprow/J-Board BRANCH=main bash <(curl -fsSL https
 
 ### 反向代理
 
-`NEXTAUTH_URL` 和后台“系统设置 -> 站点域名 / URL”都应该填写公网域名，也就是你准备给用户访问、并反向代理到 J-Board 的域名。不要填写 `localhost`、容器名或内网地址。
+`NEXTAUTH_URL` 和后台“系统设置 -> 网站 URL”都应该填写面板公网域名，也就是你准备给用户访问、并反向代理到 J-Board 的域名。不要填写 `localhost`、容器名或内网地址。
+
+`SUBSCRIPTION_URL` 和后台“系统设置 -> 订阅 URL”只用于生成客户端订阅链接。它可以和网站 URL 相同；如果你想单独做 Cloudflare/WAF/访问风控，建议使用 `https://sub.example.com` 这类独立域名，并把它也反向代理到同一个 J-Board 服务。独立订阅域名只需要承载 `/api/subscription/*`，后续可以在反代或 WAF 层对其他路径返回 404。
 
 Nginx 示例：
 
 ```nginx
 server {
   listen 80;
-  server_name panel.example.com;
+  server_name panel.example.com sub.example.com;
 
   location / {
     proxy_pass http://127.0.0.1:3000;
@@ -201,7 +206,9 @@ server {
 }
 ```
 
-正式上线建议再用 Certbot、宝塔、1Panel、Caddy 或 CDN 申请 HTTPS 证书，然后把 `NEXTAUTH_URL` 改为 `https://panel.example.com`。
+正式上线建议再用 Certbot、宝塔、1Panel、Caddy 或 CDN 申请 HTTPS 证书，然后把 `NEXTAUTH_URL` 改为 `https://panel.example.com`。如果单独使用订阅域名，把 `SUBSCRIPTION_URL` 或后台订阅 URL 改为 `https://sub.example.com`。
+
+订阅域名套 Cloudflare 时，源站应只允许 Cloudflare 回源或通过 Cloudflare Tunnel 暴露服务，并正确传递 `CF-Connecting-IP` / `X-Forwarded-For`。否则后续订阅访问风控中的真实 IP 可能被直连源站请求伪造。
 
 ### 手动 Docker 部署
 
@@ -209,7 +216,7 @@ server {
 
 ```bash
 cp .env.example .env
-# 编辑 .env，尤其是 NEXTAUTH_URL、NEXTAUTH_SECRET、ENCRYPTION_KEY、POSTGRES_PASSWORD、管理员账号
+# 编辑 .env，尤其是 NEXTAUTH_URL、SUBSCRIPTION_URL、NEXTAUTH_SECRET、ENCRYPTION_KEY、POSTGRES_PASSWORD、管理员账号
 docker compose build init app
 docker compose --profile setup run --rm init
 docker compose up -d app
@@ -236,11 +243,12 @@ docker compose up -d app
 - 查看日志：`docker compose logs -f app`
 - 页面仍是旧版本：确认已执行 `docker compose build init app` 和 `docker compose up -d app`
 - Schema 没有生效：单独运行 `docker compose --profile setup run --rm init sh -lc 'npm run db:push'`
-- 登录回调、邮件链接或支付回跳出现 `localhost`：检查 `.env` 里的 `NEXTAUTH_URL` 和后台系统设置里的站点域名。
+- 登录回调、邮件链接或支付回跳出现 `localhost`：检查 `.env` 里的 `NEXTAUTH_URL` 和后台系统设置里的网站 URL。
+- 订阅链接仍然使用主站域名：检查 `.env` 里的 `SUBSCRIPTION_URL` 或后台系统设置里的订阅 URL；后台配置优先于环境变量。
 
 ### 部署后检查清单
 
-1. 登录 `/admin`，进入“系统设置”，确认站点域名就是你的反代域名。
+1. 登录 `/admin`，进入“系统设置”，确认网站 URL 是面板反代域名，订阅 URL 是你准备给客户端拉取订阅的域名。
 2. 配置 SMTP 邮件服务并点击“测试”，再按需要开启注册邮箱验证。
 3. 进入“支付配置”，填写并启用至少一种支付方式。
 4. 添加 3x-ui 节点，测试连接并同步入站。

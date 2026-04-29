@@ -25,6 +25,7 @@ export default async function AdminSettingsPage() {
         config={{
           siteName: config.siteName,
           siteUrl: config.siteUrl,
+          subscriptionUrl: config.subscriptionUrl,
           supportContact: config.supportContact,
           maintenanceNotice: config.maintenanceNotice,
           siteNotice: config.siteNotice,

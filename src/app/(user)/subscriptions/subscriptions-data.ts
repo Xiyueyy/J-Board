@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
-import { getSiteBaseUrl } from "@/services/site-url";
+import { getSubscriptionBaseUrl as resolveSubscriptionBaseUrl } from "@/services/site-url";
 import {
   getPlanTrafficPoolState,
   type PlanTrafficPoolState,
@@ -22,7 +22,7 @@ export async function getUserSubscriptions(userId: string): Promise<Subscription
 
 export async function getSubscriptionBaseUrl() {
   const requestHeaders = await headers();
-  return getSiteBaseUrl({ headers: requestHeaders });
+  return resolveSubscriptionBaseUrl({ headers: requestHeaders });
 }
 
 export async function getTrafficPoolMap(subscriptions: SubscriptionRecord[]) {
