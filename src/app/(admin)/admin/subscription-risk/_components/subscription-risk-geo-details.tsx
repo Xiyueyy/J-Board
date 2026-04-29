@@ -1,4 +1,4 @@
-import { ChevronDown, Globe2, MapPin } from "lucide-react";
+import { ChevronDown, Globe2, MapPin, ScrollText } from "lucide-react";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { WORLD_COUNTRY_PATHS } from "@/components/shared/world-map-paths";
 import { formatDate } from "@/lib/utils";
@@ -102,6 +102,62 @@ function RiskMetric({ label, value }: { label: string; value: number }) {
   );
 }
 
+function AnalysisLogDetails({ summary }: { summary: SubscriptionRiskGeoSummary }) {
+  const logs = summary.analysisLogs;
+
+  return (
+    <details className="group rounded-xl border border-border/70 bg-card">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-medium [&::-webkit-details-marker]:hidden">
+        <span className="flex min-w-0 items-center gap-2">
+          <ScrollText className="size-4 shrink-0 text-primary" />
+          <span className="truncate">分析日志</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+          {logs.length} 条
+          <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
+        </span>
+      </summary>
+      <div className="max-h-[30rem] overflow-auto border-t border-border/60 p-3">
+        {logs.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-border/70 p-3 text-xs text-muted-foreground">暂无分析日志。</p>
+        ) : (
+          <div className="space-y-3">
+            {logs.map((log) => (
+              <article key={log.id} className="min-w-0 border-t border-border/60 pt-3 first:border-t-0 first:pt-0">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-mono text-xs font-semibold text-foreground">{log.ip}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{formatDate(log.createdAt)}</p>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                    <StatusBadge tone={log.source === "节点 Xray 日志" ? "info" : "neutral"}>{log.source}</StatusBadge>
+                    <StatusBadge tone={log.allowed ? "success" : "warning"}>{log.allowed ? "放行" : "拦截"}</StatusBadge>
+                  </div>
+                </div>
+                <p className="mt-2 break-words text-xs leading-5 text-muted-foreground">{log.location}</p>
+                {log.detailLines.length > 0 ? (
+                  <ul className="mt-2 space-y-1.5 text-xs leading-5 text-foreground/80">
+                    {log.detailLines.map((line, index) => (
+                      <li key={line + index} className="break-words rounded-md border border-border/60 bg-muted/20 px-2 py-1">
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 rounded-md border border-dashed border-border/70 px-2 py-1.5 text-xs text-muted-foreground">
+                    系统未写入额外分析详情，仅保留 IP、地区和访问结果。
+                  </p>
+                )}
+                {log.userAgent && <p className="mt-2 truncate font-mono text-[0.7rem] text-muted-foreground">{log.userAgent}</p>}
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
+
 export function SubscriptionRiskGeoDetails({ summary }: { summary: SubscriptionRiskGeoSummary }) {
   return (
     <section className="space-y-4">
@@ -188,6 +244,8 @@ export function SubscriptionRiskGeoDetails({ summary }: { summary: SubscriptionR
           )}
         </div>
       </details>
+
+      <AnalysisLogDetails summary={summary} />
     </section>
   );
 }

@@ -81,6 +81,11 @@ export type SubscriptionRiskRecentAccess = {
   createdAt: string;
 };
 
+export type SubscriptionRiskAnalysisLog = SubscriptionRiskRecentAccess & {
+  source: string;
+  detailLines: string[];
+};
+
 export type SubscriptionRiskGeoSummary = {
   totalLogs: number;
   allowedLogs: number;
@@ -92,6 +97,7 @@ export type SubscriptionRiskGeoSummary = {
   countries: SubscriptionRiskCountrySummary[];
   points: SubscriptionRiskGeoPoint[];
   recentAccesses: SubscriptionRiskRecentAccess[];
+  analysisLogs: SubscriptionRiskAnalysisLog[];
 };
 
 type RiskEventScope = Pick<
@@ -120,6 +126,22 @@ function parseCoordinate(value: string | null | undefined, min: number, max: num
   const parsed = Number.parseFloat(value);
   if (!Number.isFinite(parsed) || parsed < min || parsed > max) return null;
   return parsed;
+}
+
+function analysisSource(log: Pick<SubscriptionRiskAccessLog, "kind" | "reason" | "userAgent">) {
+  if (log.userAgent === "jboard-agent/xray-access-log" || log.reason?.includes("节点 Xray access log")) {
+    return "节点 Xray 日志";
+  }
+  if (log.kind === "AGGREGATE") return "总订阅访问";
+  return "订阅访问";
+}
+
+function splitAnalysisReason(reason: string | null | undefined) {
+  return (reason ?? "")
+    .split("；")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 12);
 }
 
 function uniquePreview(values: Iterable<string>, limit = 4) {
@@ -299,6 +321,17 @@ export function buildSubscriptionRiskGeoSummary(logs: SubscriptionRiskAccessLog[
       reason: log.reason,
       userAgent: log.userAgent,
       createdAt: log.createdAt.toISOString(),
+    })),
+    analysisLogs: logs.slice(0, 40).map((log) => ({
+      id: log.id,
+      ip: log.ip,
+      location: locationLabel(log),
+      allowed: log.allowed,
+      reason: log.reason,
+      userAgent: log.userAgent,
+      createdAt: log.createdAt.toISOString(),
+      source: analysisSource(log),
+      detailLines: splitAnalysisReason(log.reason),
     })),
   };
 }
