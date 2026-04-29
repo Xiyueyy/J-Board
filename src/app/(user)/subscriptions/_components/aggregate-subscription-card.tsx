@@ -1,10 +1,10 @@
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
-import { CalendarClock, Gauge, Layers3, Link2, Sparkles } from "lucide-react";
-import { CopyButton } from "@/components/shared/copy-button";
+import { CalendarClock, Gauge, Layers3, Sparkles } from "lucide-react";
 import { QrPreview } from "@/components/shared/qr-preview";
 import { Progress } from "@/components/ui/progress";
 import { formatBytes } from "@/lib/utils";
+import { SubscriptionImportActions, withSubscriptionFormat } from "./subscription-import-actions";
 
 interface AggregateSubscriptionCardProps {
   subscriptionUrl: string;
@@ -24,6 +24,7 @@ export function AggregateSubscriptionCard({
   const percent = totalLimit
     ? Math.min(100, Math.round((Number(totalUsed) / Number(totalLimit)) * 100))
     : 0;
+  const clashUrl = withSubscriptionFormat(subscriptionUrl, "clash");
 
   return (
     <section className="relative overflow-hidden rounded-2xl border border-primary/15 bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.16),transparent_34%),linear-gradient(135deg,hsl(var(--card)),hsl(var(--muted)/0.35))] p-5 shadow-sm sm:p-6">
@@ -44,17 +45,7 @@ export function AggregateSubscriptionCard({
             </div>
           </div>
 
-          <div className="rounded-2xl border border-border/70 bg-background/70 p-3 backdrop-blur">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <p className="inline-flex items-center gap-2 text-xs font-semibold tracking-[0.14em] text-muted-foreground">
-                  <Link2 className="size-3.5" /> SUBSCRIPTION URL
-                </p>
-                <p className="mt-1 truncate font-mono text-xs text-foreground/80">{subscriptionUrl}</p>
-              </div>
-              <CopyButton text={subscriptionUrl} />
-            </div>
-          </div>
+          <SubscriptionImportActions genericUrl={subscriptionUrl} clashUrl={clashUrl} />
 
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-xl border border-border/70 bg-background/65 p-3">
@@ -94,7 +85,7 @@ export function AggregateSubscriptionCard({
         </div>
 
         <div className="lg:sticky lg:top-24">
-          <QrPreview label="总订阅二维码" value={subscriptionUrl} alt="总订阅链接二维码" />
+          <QrPreview label="Clash 订阅二维码" value={clashUrl} alt="Clash 订阅链接二维码" />
         </div>
       </div>
     </section>

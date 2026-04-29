@@ -5,7 +5,7 @@ import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
-export function CopyButton({ text }: { text: string }) {
+export function CopyButton({ text, label = "复制" }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
 
   return (
@@ -20,7 +20,7 @@ export function CopyButton({ text }: { text: string }) {
       }}
     >
       {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-      {copied ? "已复制" : "复制"}
+      {copied ? "已复制" : label}
     </Button>
   );
 }

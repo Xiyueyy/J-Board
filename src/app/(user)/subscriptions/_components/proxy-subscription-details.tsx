@@ -1,10 +1,10 @@
 import { Gauge, Link2, QrCode } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-import { CopyButton } from "@/components/shared/copy-button";
 import { QrPreview } from "@/components/shared/qr-preview";
 import { formatBytes } from "@/lib/utils";
 import { buildSingleNodeUri } from "@/services/subscription";
 import type { SubscriptionRecord } from "../subscriptions-types";
+import { SubscriptionImportActions, withSubscriptionFormat } from "./subscription-import-actions";
 
 interface ProxySubscriptionDetailsProps {
   sub: SubscriptionRecord;
@@ -18,6 +18,7 @@ export function ProxySubscriptionDetails({ sub, baseUrl }: ProxySubscriptionDeta
   const limit = sub.trafficLimit ? Number(sub.trafficLimit) : null;
   const percent = limit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
   const subUrl = `${baseUrl}/api/subscription/${sub.id}?token=${sub.downloadToken}`;
+  const clashUrl = withSubscriptionFormat(subUrl, "clash");
   const singleNodeUri = sub.nodeClient ? buildSingleNodeUri(sub.nodeClient) : "";
 
   return (
@@ -45,18 +46,20 @@ export function ProxySubscriptionDetails({ sub, baseUrl }: ProxySubscriptionDeta
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Link2 className="size-4 text-primary" /> 导入信息
           </div>
-          <div className="mt-3 flex flex-col gap-3 rounded-2xl border border-border/40 bg-background/45 p-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <p className="text-xs font-semibold tracking-[0.14em] text-muted-foreground">SUBSCRIPTION URL</p>
-              <p className="mt-1 truncate font-mono text-xs text-foreground/82">{subUrl}</p>
-            </div>
-            <CopyButton text={subUrl} />
+          <div className="mt-3">
+            <SubscriptionImportActions
+              genericUrl={subUrl}
+              clashUrl={clashUrl}
+              title="单节点导入"
+              description="适合只导入当前节点；多节点日常使用建议复制总订阅链接。"
+              compact
+            />
           </div>
           <div className="mt-3 flex items-center gap-2 text-xs font-semibold tracking-[0.14em] text-muted-foreground">
             <QrCode className="size-3.5" /> 扫码导入
           </div>
           <div className="mt-2 grid gap-3 sm:grid-cols-2">
-            <QrPreview label="订阅 URL 二维码" value={subUrl} alt="订阅 URL 二维码" />
+            <QrPreview label="Clash 订阅二维码" value={clashUrl} alt="Clash 订阅二维码" />
             {singleNodeUri && (
               <QrPreview
                 label="单节点 URI 二维码"

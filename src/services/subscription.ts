@@ -37,6 +37,66 @@ interface LinkTarget {
   remark?: string;
 }
 
+export type SubscriptionOutputFormat = "base64" | "uri" | "clash";
+
+export interface SubscriptionTrafficStats {
+  upload?: bigint | number | null;
+  download?: bigint | number | null;
+  total?: bigint | number | null;
+  expire?: Date | null;
+}
+
+const CLASH_FORMAT_ALIASES = new Set(["clash", "clash-meta", "mihomo", "yaml", "yml"]);
+const URI_FORMAT_ALIASES = new Set(["uri", "raw", "plain", "text"]);
+const BASE64_FORMAT_ALIASES = new Set(["base64", "v2ray", "generic"]);
+
+function normalizeSubscriptionFormat(raw: string | null): SubscriptionOutputFormat | null {
+  if (!raw) return null;
+  const normalized = raw.trim().toLowerCase();
+  if (CLASH_FORMAT_ALIASES.has(normalized)) return "clash";
+  if (URI_FORMAT_ALIASES.has(normalized)) return "uri";
+  if (BASE64_FORMAT_ALIASES.has(normalized)) return "base64";
+  return null;
+}
+
+function isClashLikeUserAgent(userAgent: string | null | undefined) {
+  if (!userAgent) return false;
+  return /clash|mihomo|verge|stash|flclash|nyanpasu|openclash/i.test(userAgent);
+}
+
+export function resolveSubscriptionFormat(
+  searchParams: URLSearchParams,
+  userAgent?: string | null,
+): SubscriptionOutputFormat {
+  return normalizeSubscriptionFormat(searchParams.get("format") ?? searchParams.get("target"))
+    ?? (isClashLikeUserAgent(userAgent) ? "clash" : "base64");
+}
+
+export function getSubscriptionContentType(format: SubscriptionOutputFormat) {
+  return format === "clash" ? "text/yaml; charset=utf-8" : "text/plain; charset=utf-8";
+}
+
+export function getSubscriptionFilename(baseName: string, format: SubscriptionOutputFormat) {
+  return `${baseName}.${format === "clash" ? "yaml" : "txt"}`;
+}
+
+function bigintHeaderValue(value: bigint | number | null | undefined) {
+  if (typeof value === "bigint") return value.toString();
+  if (typeof value === "number" && Number.isFinite(value)) return Math.max(0, Math.floor(value)).toString();
+  return "0";
+}
+
+export function buildSubscriptionUserInfo(stats: SubscriptionTrafficStats | null | undefined) {
+  if (!stats) return null;
+  const expire = stats.expire ? Math.floor(stats.expire.getTime() / 1000) : 0;
+  return [
+    `upload=${bigintHeaderValue(stats.upload)}`,
+    `download=${bigintHeaderValue(stats.download)}`,
+    `total=${bigintHeaderValue(stats.total)}`,
+    `expire=${expire}`,
+  ].join("; ");
+}
+
 function getAggregateSubscriptionSecret() {
   const secret = process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET ?? process.env.DATABASE_URL;
   if (!secret) {
@@ -439,6 +499,55 @@ function appendQueryAndHash(base: string, params: URLSearchParams, label: string
   return `${base}${query ? `?${query}` : ""}#${encodeURIComponent(label)}`;
 }
 
+function stripUndefined<T extends JsonRecord>(value: T): T {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== "")) as T;
+}
+
+function yamlQuote(value: string) {
+  return JSON.stringify(value);
+}
+
+function toYaml(value: unknown, indent = 0): string {
+  const pad = " ".repeat(indent);
+  if (Array.isArray(value)) {
+    if (value.length === 0) return `${pad}[]`;
+    return value.map((item) => {
+      if (item && typeof item === "object" && !Array.isArray(item)) {
+        const record = item as JsonRecord;
+        const entries = Object.entries(record);
+        if (entries.length === 0) return `${pad}- {}`;
+        const [firstKey, firstValue] = entries[0];
+        const firstLine = `${pad}- ${firstKey}: ${yamlInline(firstValue)}`;
+        const rest = entries.slice(1).map(([key, child]) => `${pad}  ${key}: ${yamlBlock(child, indent + 2)}`);
+        return [firstLine, ...rest].join("\n");
+      }
+      return `${pad}- ${yamlInline(item)}`;
+    }).join("\n");
+  }
+
+  const record = asRecord(value);
+  if (!record) return `${pad}${yamlInline(value)}`;
+  const entries = Object.entries(record);
+  if (entries.length === 0) return `${pad}{}`;
+  return entries.map(([key, child]) => `${pad}${key}: ${yamlBlock(child, indent)}`).join("\n");
+}
+
+function yamlBlock(value: unknown, indent: number) {
+  if (value && typeof value === "object") {
+    const nested = toYaml(value, indent + 2);
+    return `\n${nested}`;
+  }
+  return yamlInline(value);
+}
+
+function yamlInline(value: unknown): string {
+  if (typeof value === "string") return yamlQuote(value);
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (value == null) return "null";
+  return yamlQuote(String(value));
+}
+
 function getTargets(nodeClient: ProxyNodeContext): LinkTarget[] {
   const stream = getStream(nodeClient);
   const proxies: LinkTarget[] = [];
@@ -463,6 +572,217 @@ function getTargets(nodeClient: ProxyNodeContext): LinkTarget[] {
 
   if (proxies.length > 0) return proxies;
   return [{ address: getServerAddress(nodeClient), port: nodeClient.inbound.port }];
+}
+
+function getStreamSecurity(stream: JsonRecord, target?: LinkTarget) {
+  return target?.securityOverride && target.securityOverride !== "same"
+    ? target.securityOverride
+    : (asString(stream.security) ?? "none");
+}
+
+function getTlsSettings(stream: JsonRecord) {
+  const tls = asRecord(stream.tlsSettings);
+  const nested = asRecord(tls?.settings);
+  return { tls, nested };
+}
+
+function getRealitySettings(stream: JsonRecord) {
+  const reality = asRecord(stream.realitySettings);
+  const nested = asRecord(reality?.settings);
+  return { reality, nested };
+}
+
+function applyClashTls(proxy: JsonRecord, stream: JsonRecord, security: string) {
+  if (security !== "tls" && security !== "reality") return;
+
+  proxy.tls = true;
+  if (security === "tls") {
+    const { tls, nested } = getTlsSettings(stream);
+    const serverName = asString(tls?.serverName) ?? asString(nested?.serverName);
+    const fingerprint = asString(nested?.fingerprint) ?? asString(tls?.fingerprint);
+    const alpn = stringList(tls?.alpn);
+    if (serverName) proxy.servername = serverName;
+    if (fingerprint) proxy["client-fingerprint"] = fingerprint;
+    if (alpn.length > 0) proxy.alpn = alpn;
+    if (asBoolean(nested?.allowInsecure) || asBoolean(tls?.allowInsecure)) {
+      proxy["skip-cert-verify"] = true;
+    }
+    return;
+  }
+
+  const { reality, nested } = getRealitySettings(stream);
+  const serverName = firstString(reality?.serverNames) ?? asString(reality?.serverName);
+  const publicKey = asString(nested?.publicKey) ?? asString(reality?.publicKey);
+  const shortId = firstString(reality?.shortIds) ?? asString(reality?.shortId);
+  const fingerprint = asString(nested?.fingerprint) ?? asString(reality?.fingerprint);
+  const spiderX = asString(nested?.spiderX) ?? asString(reality?.spiderX);
+  if (serverName) proxy.servername = serverName;
+  if (fingerprint) proxy["client-fingerprint"] = fingerprint;
+  proxy["reality-opts"] = stripUndefined({
+    "public-key": publicKey,
+    "short-id": shortId,
+    "spider-x": spiderX,
+  });
+}
+
+function getPathAndHost(settings: unknown) {
+  const record = asRecord(settings);
+  if (!record) return { path: null, host: null };
+  return {
+    path: asString(record.path),
+    host: asString(record.host) ?? getHeaderValue(record.headers, "host"),
+  };
+}
+
+function applyClashTransport(proxy: JsonRecord, stream: JsonRecord) {
+  const network = asString(stream.network) ?? "tcp";
+  if (network === "tcp") {
+    const tcp = asRecord(stream.tcpSettings);
+    const header = asRecord(tcp?.header);
+    if (asString(header?.type) !== "http") return;
+    const request = asRecord(header?.request);
+    proxy.network = "http";
+    proxy["http-opts"] = stripUndefined({
+      path: stringList(request?.path),
+      headers: stripUndefined({ Host: stringList(asRecord(request?.headers)?.Host ?? asRecord(request?.headers)?.host) }),
+    });
+    return;
+  }
+
+  proxy.network = network;
+  if (network === "ws") {
+    const { path, host } = getPathAndHost(stream.wsSettings);
+    proxy["ws-opts"] = stripUndefined({
+      path,
+      headers: host ? { Host: host } : undefined,
+    });
+  } else if (network === "grpc") {
+    const grpc = asRecord(stream.grpcSettings);
+    proxy["grpc-opts"] = stripUndefined({
+      "grpc-service-name": asString(grpc?.serviceName),
+    });
+  } else if (network === "httpupgrade") {
+    const { path, host } = getPathAndHost(stream.httpupgradeSettings);
+    proxy["httpupgrade-opts"] = stripUndefined({
+      path,
+      headers: host ? { Host: host } : undefined,
+    });
+  } else if (network === "xhttp") {
+    const { path, host } = getPathAndHost(stream.xhttpSettings);
+    proxy["xhttp-opts"] = stripUndefined({
+      path,
+      headers: host ? { Host: host } : undefined,
+    });
+  }
+}
+
+function buildClashProxy(nodeClient: ProxyNodeContext, target: LinkTarget, client: PanelClient | null) {
+  const protocol = nodeClient.inbound.protocol.toLowerCase();
+  const stream = getStream(nodeClient);
+  const settings = getSettings(nodeClient);
+  const security = getStreamSecurity(stream, target);
+  const base: JsonRecord = {
+    name: getDisplayName(nodeClient, target),
+    server: target.address,
+    port: target.port,
+    udp: true,
+  };
+
+  let proxy: JsonRecord | null = null;
+  if (protocol === "vmess") {
+    proxy = {
+      ...base,
+      type: "vmess",
+      uuid: asString(client?.id) ?? nodeClient.uuid,
+      alterId: asNumber(settings.alterId) ?? 0,
+      cipher: getVmessSecurity(settings, client),
+    };
+  } else if (protocol === "vless") {
+    proxy = stripUndefined({
+      ...base,
+      type: "vless",
+      uuid: asString(client?.id) ?? nodeClient.uuid,
+      flow: getVlessFlow(settings, client),
+    });
+  } else if (protocol === "trojan") {
+    proxy = {
+      ...base,
+      type: "trojan",
+      password: asString(client?.password) ?? nodeClient.uuid,
+    };
+  } else if (protocol === "shadowsocks") {
+    const method = asString(settings.method) ?? asString(client?.method) ?? "chacha20-ietf-poly1305";
+    const inboundPassword = asString(settings.password) ?? asString(settings.serverKey);
+    const clientPassword = asString(client?.password) ?? nodeClient.uuid;
+    proxy = {
+      ...base,
+      type: "ss",
+      cipher: method,
+      password: method.startsWith("2022-") && inboundPassword ? `${inboundPassword}:${clientPassword}` : clientPassword,
+    };
+  } else if (protocol === "hysteria2") {
+    const obfsPassword = findSalamanderPassword(stream);
+    proxy = stripUndefined({
+      ...base,
+      type: asNumber(settings.version) === 1 ? "hysteria" : "hysteria2",
+      password: asString(client?.auth) ?? nodeClient.uuid,
+      obfs: obfsPassword ? "salamander" : undefined,
+      "obfs-password": obfsPassword,
+    });
+  }
+
+  if (!proxy) return null;
+  applyClashTransport(proxy, stream);
+  applyClashTls(proxy, stream, security);
+  return stripUndefined(proxy);
+}
+
+function dedupeProxyNames(proxies: JsonRecord[]) {
+  const seen = new Map<string, number>();
+  return proxies.map((proxy) => {
+    const name = asString(proxy.name) ?? "J-Board";
+    const count = seen.get(name) ?? 0;
+    seen.set(name, count + 1);
+    return count === 0 ? proxy : { ...proxy, name: `${name} ${count + 1}` };
+  });
+}
+
+export function buildClashSubscriptionYaml(nodeClients: ProxyNodeContext[]): string {
+  const proxies = dedupeProxyNames(
+    nodeClients.flatMap((nodeClient) => {
+      const client = findClient(nodeClient);
+      return getTargets(nodeClient)
+        .map((target) => buildClashProxy(nodeClient, target, client))
+        .filter((item): item is JsonRecord => item != null);
+    }),
+  );
+  const proxyNames = proxies.map((proxy) => asString(proxy.name) ?? "J-Board");
+  const selectableNames = proxyNames.length > 0 ? proxyNames : ["DIRECT"];
+  const config = {
+    "mixed-port": 7890,
+    "allow-lan": false,
+    mode: "rule",
+    "log-level": "info",
+    ipv6: true,
+    proxies,
+    "proxy-groups": [
+      {
+        name: "节点选择",
+        type: "select",
+        proxies: ["自动选择", ...selectableNames, "DIRECT"],
+      },
+      {
+        name: "自动选择",
+        type: "url-test",
+        proxies: selectableNames,
+        url: "https://www.gstatic.com/generate_204",
+        interval: 300,
+      },
+    ],
+    rules: ["MATCH,节点选择"],
+  };
+
+  return `${toYaml(config)}\n`;
 }
 
 function getVmessSecurity(settings: JsonRecord, client: PanelClient | null) {
@@ -627,13 +947,35 @@ export async function generateSingleNodeUri(subscriptionId: string): Promise<str
   return buildSingleNodeUri(sub.nodeClient);
 }
 
-export async function generateSubscriptionContent(subscriptionId: string): Promise<string> {
-  const uri = await generateSingleNodeUri(subscriptionId);
+function encodeSubscriptionContent(uri: string, format: SubscriptionOutputFormat) {
   if (!uri) return "";
-  return Buffer.from(uri).toString("base64");
+  return format === "base64" ? Buffer.from(uri).toString("base64") : uri;
 }
 
-export async function generateAggregateSubscriptionContent(userId: string): Promise<string> {
+export async function generateSubscriptionContent(
+  subscriptionId: string,
+  format: SubscriptionOutputFormat = "base64",
+): Promise<string> {
+  const sub = await prisma.userSubscription.findUniqueOrThrow({
+    where: { id: subscriptionId },
+    include: {
+      nodeClient: {
+        include: {
+          inbound: { include: { server: true } },
+        },
+      },
+    },
+  });
+
+  if (sub.status !== "ACTIVE" || !sub.nodeClient) return "";
+  if (format === "clash") return buildClashSubscriptionYaml([sub.nodeClient]);
+  return encodeSubscriptionContent(buildSingleNodeUri(sub.nodeClient), format);
+}
+
+export async function generateAggregateSubscriptionContent(
+  userId: string,
+  format: SubscriptionOutputFormat = "base64",
+): Promise<string> {
   const subscriptions = await prisma.userSubscription.findMany({
     where: {
       userId,
@@ -652,10 +994,16 @@ export async function generateAggregateSubscriptionContent(userId: string): Prom
     orderBy: [{ endDate: "asc" }, { createdAt: "asc" }],
   });
 
-  const content = subscriptions
-    .map((subscription) => subscription.nodeClient ? buildSingleNodeUri(subscription.nodeClient) : "")
+  const nodeClients = subscriptions
+    .map((subscription) => subscription.nodeClient)
+    .filter((nodeClient): nodeClient is NonNullable<typeof nodeClient> => nodeClient != null);
+
+  if (format === "clash") return buildClashSubscriptionYaml(nodeClients);
+
+  const content = nodeClients
+    .map((nodeClient) => buildSingleNodeUri(nodeClient))
     .filter(Boolean)
     .join("\n");
 
-  return content ? Buffer.from(content).toString("base64") : "";
+  return encodeSubscriptionContent(content, format);
 }

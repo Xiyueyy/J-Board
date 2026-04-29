@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { generateSubscriptionContent } from "@/services/subscription";
+import {
+  buildSubscriptionUserInfo,
+  generateSubscriptionContent,
+  getSubscriptionContentType,
+  getSubscriptionFilename,
+  resolveSubscriptionFormat,
+} from "@/services/subscription";
 import { prisma } from "@/lib/prisma";
 import { rateLimit } from "@/lib/rate-limit";
 import { getClientRequestContext } from "@/lib/request-context";
@@ -29,6 +35,9 @@ export async function GET(
         userId: true,
         downloadToken: true,
         status: true,
+        trafficUsed: true,
+        trafficLimit: true,
+        endDate: true,
         plan: { select: { type: true } },
       },
     }),
@@ -64,7 +73,7 @@ export async function GET(
       allowed: false,
       reason: "missing_token",
     });
-    return jsonError("Missing token", 401);
+    return jsonError("订阅链接缺少 token 参数，请从订阅页面重新复制完整链接", 401);
   }
 
   if (!sub || sub.downloadToken !== token) {
@@ -76,7 +85,7 @@ export async function GET(
       allowed: false,
       reason: "invalid_token",
     });
-    return jsonError("Invalid token", 401);
+    return jsonError("订阅 token 无效或已被重置，请在订阅详情页重新复制链接", 401);
   }
 
   if (config.subscriptionRiskEnabled) {
@@ -108,7 +117,7 @@ export async function GET(
       allowed: false,
       reason: "subscription_inactive",
     });
-    return jsonError("Subscription inactive", 403);
+    return jsonError(`订阅当前状态为 ${sub.status}，只有 ACTIVE 状态可以拉取配置`, 403);
   }
 
   const risk = await recordSubscriptionAccess({
@@ -124,12 +133,24 @@ export async function GET(
     return jsonError("Subscription suspended by risk control", 403);
   }
 
-  const content = await generateSubscriptionContent(id);
+  const format = resolveSubscriptionFormat(url.searchParams, req.headers.get("user-agent"));
+  const content = await generateSubscriptionContent(id, format);
+  const userInfo = buildSubscriptionUserInfo({
+    upload: 0,
+    download: sub.trafficUsed,
+    total: sub.trafficLimit,
+    expire: sub.endDate,
+  });
+  const headers = new Headers({
+    "Content-Type": getSubscriptionContentType(format),
+    "Content-Disposition": `attachment; filename="${getSubscriptionFilename("jboard-sub", format)}"`,
+    "Cache-Control": "no-store",
+    "profile-update-interval": "12",
+    "profile-web-page-url": `${url.origin}/subscriptions/${id}`,
+  });
+  if (userInfo) headers.set("Subscription-Userinfo", userInfo);
+
   return new Response(content, {
-    headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Content-Disposition": `attachment; filename="jboard-sub.txt"`,
-      "Cache-Control": "no-store",
-    },
+    headers,
   });
 }
