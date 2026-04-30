@@ -41,6 +41,7 @@ export class ThreeXUIAdapter implements NodePanelAdapter {
   private username: string;
   private password: string;
   private cookie = "";
+  private addClientInboundCache: Promise<PanelInbound[]> | null = null;
 
   constructor(panelUrl: string, username: string, password: string) {
     this.panelUrl = this.normalizePanelUrl(panelUrl);
@@ -194,8 +195,14 @@ export class ThreeXUIAdapter implements NodePanelAdapter {
     return inbounds.find((item) => item.id === inboundId) ?? null;
   }
 
+  private async getInboundForAddClient(inboundId: number): Promise<PanelInbound | null> {
+    this.addClientInboundCache ??= this.getInbounds();
+    const inbounds = await this.addClientInboundCache;
+    return inbounds.find((item) => item.id === inboundId) ?? null;
+  }
+
   async addClient(params: CreateClientParams): Promise<void> {
-    const inbound = await this.getInbound(params.inboundId);
+    const inbound = await this.getInboundForAddClient(params.inboundId);
     await this.jsonRequest("/panel/api/inbounds/addClient", {
       method: "POST",
       body: JSON.stringify({

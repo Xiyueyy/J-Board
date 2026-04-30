@@ -9,7 +9,9 @@ import { recordAuditLog } from "@/services/audit";
 import { createNotification } from "@/services/notifications";
 import { generateNodeClientCredential } from "@/services/node-client-credential";
 import { createPanelAdapter } from "@/services/node-panel/factory";
+import type { NodePanelAdapter } from "@/services/node-panel/adapter";
 import type {
+  NodeInbound,
   NodeServer,
   Order,
   Protocol,
@@ -20,6 +22,136 @@ import type {
 
 
 type PaidOrder = Order & { plan: SubscriptionPlan; user: User };
+
+interface ProvisionRuntime {
+  serversById: Map<string, NodeServer>;
+  activeInboundsById: Map<string, NodeInbound>;
+  activeInboundsByNodeId: Map<string, NodeInbound[]>;
+  firstPlanInboundIdByPlanId: Map<string, string>;
+  adaptersByServerId: Map<string, { adapter: NodePanelAdapter; login: Promise<boolean> }>;
+}
+
+function createProvisionRuntime(): ProvisionRuntime {
+  return {
+    serversById: new Map(),
+    activeInboundsById: new Map(),
+    activeInboundsByNodeId: new Map(),
+    firstPlanInboundIdByPlanId: new Map(),
+    adaptersByServerId: new Map(),
+  };
+}
+
+function addRuntimeInbound(runtime: ProvisionRuntime, inbound: NodeInbound) {
+  if (!inbound.isActive) return;
+  runtime.activeInboundsById.set(inbound.id, inbound);
+  const inbounds = runtime.activeInboundsByNodeId.get(inbound.serverId) ?? [];
+  if (!inbounds.some((item) => item.id === inbound.id)) {
+    inbounds.push(inbound);
+    inbounds.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+  runtime.activeInboundsByNodeId.set(inbound.serverId, inbounds);
+}
+
+async function prepareProvisionRuntime(items: NewOrderItem[], db: DbClient, runtime: ProvisionRuntime) {
+  const proxyItems = items.filter((item) => item.plan.type === "PROXY" && item.plan.nodeId);
+  if (proxyItems.length === 0) return;
+
+  const nodeIds = Array.from(new Set(proxyItems.map((item) => item.plan.nodeId).filter((id): id is string => Boolean(id))));
+  const planIds = Array.from(new Set(proxyItems.map((item) => item.planId)));
+
+  const [servers, inbounds, options] = await Promise.all([
+    db.nodeServer.findMany({ where: { id: { in: nodeIds } } }),
+    db.nodeInbound.findMany({
+      where: { serverId: { in: nodeIds }, isActive: true },
+      orderBy: { createdAt: "asc" },
+    }),
+    db.planInboundOption.findMany({
+      where: { planId: { in: planIds }, inbound: { isActive: true, serverId: { in: nodeIds } } },
+      select: { planId: true, inboundId: true, inbound: { select: { serverId: true } } },
+      orderBy: { createdAt: "asc" },
+    }),
+  ]);
+
+  for (const server of servers) runtime.serversById.set(server.id, server);
+  for (const inbound of inbounds) addRuntimeInbound(runtime, inbound);
+
+  const nodeIdByPlanId = new Map(proxyItems.map((item) => [item.planId, item.plan.nodeId]));
+  for (const option of options) {
+    if (runtime.firstPlanInboundIdByPlanId.has(option.planId)) continue;
+    if (option.inbound.serverId !== nodeIdByPlanId.get(option.planId)) continue;
+    runtime.firstPlanInboundIdByPlanId.set(option.planId, option.inboundId);
+  }
+}
+
+async function getRuntimeServer(runtime: ProvisionRuntime, db: DbClient, nodeId: string) {
+  const cached = runtime.serversById.get(nodeId);
+  if (cached) return cached;
+
+  const server = await db.nodeServer.findUniqueOrThrow({ where: { id: nodeId } });
+  runtime.serversById.set(server.id, server);
+  return server;
+}
+
+async function getLoggedProvisionAdapter(runtime: ProvisionRuntime, server: NodeServer) {
+  let cached = runtime.adaptersByServerId.get(server.id);
+  if (!cached) {
+    const adapter = createPanelAdapter(server);
+    cached = { adapter, login: adapter.login() };
+    runtime.adaptersByServerId.set(server.id, cached);
+  }
+
+  const connected = await cached.login;
+  if (!connected) throw new Error(`节点 ${server.name} 登录失败，请检查 3x-ui 账号密码`);
+  return cached.adapter;
+}
+
+async function getRuntimeInboundById(
+  runtime: ProvisionRuntime,
+  db: DbClient,
+  inboundId: string | null | undefined,
+  nodeId: string,
+) {
+  if (!inboundId) return null;
+  const cached = runtime.activeInboundsById.get(inboundId);
+  if (cached && cached.serverId === nodeId) return cached;
+
+  const inbound = await db.nodeInbound.findFirst({
+    where: { id: inboundId, serverId: nodeId, isActive: true },
+  });
+  if (inbound) addRuntimeInbound(runtime, inbound);
+  return inbound;
+}
+
+async function resolveProxyProvisionTarget(
+  plan: SubscriptionPlan,
+  selectedInboundId: string | null,
+  db: DbClient,
+  runtime: ProvisionRuntime,
+) {
+  if (!plan.nodeId) throw new Error("Proxy plan has no node assigned");
+  const server = await getRuntimeServer(runtime, db, plan.nodeId);
+
+  const selectedInbound = await getRuntimeInboundById(runtime, db, selectedInboundId, plan.nodeId);
+  if (selectedInbound) return { server, inbound: selectedInbound };
+
+  const primaryInbound = await getRuntimeInboundById(runtime, db, plan.inboundId, plan.nodeId);
+  if (primaryInbound) return { server, inbound: primaryInbound };
+
+  const optionInboundId = runtime.firstPlanInboundIdByPlanId.get(plan.id);
+  const optionInbound = await getRuntimeInboundById(runtime, db, optionInboundId, plan.nodeId);
+  if (optionInbound) return { server, inbound: optionInbound };
+
+  const firstCachedInbound = runtime.activeInboundsByNodeId.get(plan.nodeId)?.[0];
+  if (firstCachedInbound) return { server, inbound: firstCachedInbound };
+
+  const firstInbound = await db.nodeInbound.findFirst({
+    where: { serverId: plan.nodeId, isActive: true },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!firstInbound) throw new Error("No active inbound on this node");
+  addRuntimeInbound(runtime, firstInbound);
+  return { server, inbound: firstInbound };
+}
 type NewOrderItem = Pick<OrderItem, "planId" | "selectedInboundId" | "trafficGb"> & {
   plan: SubscriptionPlan;
 };
@@ -70,6 +202,8 @@ async function getNewPurchaseItems(order: PaidOrder, db: DbClient): Promise<NewO
 
 async function provisionNewSubscription(order: PaidOrder, db: DbClient): Promise<string[]> {
   const items = await getNewPurchaseItems(order, db);
+  const runtime = createProvisionRuntime();
+  await prepareProvisionRuntime(items, db, runtime);
   const createdSubscriptionIds: string[] = [];
   const nodeIds = new Set<string>();
 
@@ -114,12 +248,13 @@ async function provisionNewSubscription(order: PaidOrder, db: DbClient): Promise
 
     if (item.plan.type === "PROXY") {
       const nodeId = await provisionProxyClient(
-        subscription.id,
+        subscription,
         order.user,
         item.plan,
         item.trafficGb,
         item.selectedInboundId,
         db,
+        runtime,
       );
       if (nodeId) {
         nodeIds.add(nodeId);
@@ -420,83 +555,31 @@ async function syncProxyClientQuota(
 }
 
 async function provisionProxyClient(
-  subscriptionId: string,
+  subscription: { id: string; endDate: Date },
   user: User,
   plan: SubscriptionPlan,
   trafficGb: number | null,
   selectedInboundId: string | null,
   db: DbClient,
+  runtime: ProvisionRuntime = createProvisionRuntime(),
 ): Promise<string> {
-  if (!plan.nodeId) throw new Error("Proxy plan has no node assigned");
-
-  const server = await db.nodeServer.findUniqueOrThrow({
-    where: { id: plan.nodeId },
-  });
-
-  let inbound = null;
-  if (selectedInboundId) {
-    inbound = await db.nodeInbound.findFirst({
-      where: {
-        id: selectedInboundId,
-        serverId: plan.nodeId,
-        isActive: true,
-      },
-    });
-  }
-
-  if (!inbound && plan.inboundId) {
-    inbound = await db.nodeInbound.findFirst({
-      where: {
-        id: plan.inboundId,
-        serverId: plan.nodeId,
-        isActive: true,
-      },
-    });
-  }
-
-  if (!inbound) {
-    const option = await db.planInboundOption.findFirst({
-      where: { planId: plan.id, inbound: { isActive: true, serverId: plan.nodeId } },
-      select: { inboundId: true },
-      orderBy: { createdAt: "asc" },
-    });
-
-    if (option?.inboundId) {
-      inbound = await db.nodeInbound.findFirst({
-        where: { id: option.inboundId, serverId: plan.nodeId, isActive: true },
-      });
-    }
-  }
-
-  if (!inbound) {
-    inbound = await db.nodeInbound.findFirst({
-      where: { serverId: plan.nodeId, isActive: true },
-      orderBy: { createdAt: "asc" },
-    });
-  }
-
-  if (!inbound) throw new Error("No active inbound on this node");
-
-  const clientUuid = generateNodeClientCredential(inbound.protocol, inbound.settings);
-  const clientEmail = `${user.email}-${subscriptionId.slice(0, 8)}`;
-
-  const sub = await db.userSubscription.findUniqueOrThrow({
-    where: { id: subscriptionId },
-  });
+  const { server, inbound } = await resolveProxyProvisionTarget(plan, selectedInboundId, db, runtime);
 
   if (inbound.panelInboundId == null) {
     throw new Error("3x-ui 入站 ID 缺失，请先同步节点入站");
   }
 
-  const adapter = createPanelAdapter(server);
-  await adapter.login();
+  const clientUuid = generateNodeClientCredential(inbound.protocol, inbound.settings);
+  const clientEmail = `${user.email}-${subscription.id.slice(0, 8)}`;
+  const adapter = await getLoggedProvisionAdapter(runtime, server);
+
   await adapter.addClient({
     inboundId: inbound.panelInboundId,
     email: clientEmail,
     uuid: clientUuid,
-    subId: subscriptionId,
+    subId: subscription.id,
     totalGB: trafficGb || 0,
-    expiryTime: sub.endDate.getTime(),
+    expiryTime: subscription.endDate.getTime(),
     protocol: inbound.protocol,
   });
 
@@ -504,10 +587,10 @@ async function provisionProxyClient(
     data: {
       inboundId: inbound.id,
       userId: user.id,
-      subscriptionId,
+      subscriptionId: subscription.id,
       email: clientEmail,
       uuid: clientUuid,
-      expiryTime: sub.endDate,
+      expiryTime: subscription.endDate,
     },
   });
 
