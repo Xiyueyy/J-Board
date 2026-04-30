@@ -50,8 +50,6 @@ export interface OnlineUserRow {
   lastNodeName: string | null;
   lastInboundName: string | null;
   lastActiveAt: Date | null;
-  sourceIp: string | null;
-  targetHost: string | null;
   monthlyUsageBytes: bigint;
   totalUsedBytes: bigint;
   totalLimitBytes: bigint | null;
@@ -60,16 +58,6 @@ export interface OnlineUserRow {
 
 function monthStart(now = new Date()) {
   return new Date(now.getFullYear(), now.getMonth(), 1);
-}
-
-function parseReasonValue(reason: string | null | undefined, label: string) {
-  if (!reason) return null;
-  const marker = `${label}：`;
-  const start = reason.indexOf(marker);
-  if (start < 0) return null;
-  const rest = reason.slice(start + marker.length);
-  const value = rest.split("；")[0]?.trim();
-  return value || null;
 }
 
 function getInboundDisplayName(inbound: { tag: string; settings: unknown } | null | undefined) {
@@ -186,6 +174,11 @@ export async function getOnlineUsersPageData(
             userId: { in: userIds },
             userAgent: "jboard-agent/xray-access-log",
           },
+          select: {
+            userId: true,
+            subscriptionId: true,
+            createdAt: true,
+          },
           orderBy: { createdAt: "desc" },
           distinct: ["userId"],
         })
@@ -263,8 +256,6 @@ export async function getOnlineUsersPageData(
       lastNodeName: nodeName,
       lastInboundName: inboundName,
       lastActiveAt,
-      sourceIp: latestAccess?.ip ?? null,
-      targetHost: parseReasonValue(latestAccess?.reason, "样本目标"),
       monthlyUsageBytes,
       totalUsedBytes: sumClientTraffic(user.subscriptions),
       totalLimitBytes: sumTrafficLimit(user.subscriptions),

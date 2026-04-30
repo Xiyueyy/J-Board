@@ -12,11 +12,33 @@ import {
   DataTableRow,
 } from "@/components/shared/data-table";
 import { StatusBadge, type StatusTone } from "@/components/shared/status-badge";
-import { cn, formatBytes, formatDate } from "@/lib/utils";
+import { cn, formatBytes } from "@/lib/utils";
 import type { OnlineUserRow } from "../online-users-data";
 
 interface OnlineUsersTableProps {
   users: OnlineUserRow[];
+}
+
+
+const beijingDateFormatter = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: "Asia/Shanghai",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+function formatBeijingDate(date: Date | string) {
+  const parts = Object.fromEntries(
+    beijingDateFormatter
+      .formatToParts(new Date(date))
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
 const stateMeta: Record<OnlineUserRow["onlineState"], { label: string; tone: StatusTone; dot: string }> = {
@@ -36,7 +58,7 @@ function formatExpiry(date: Date | null) {
   if (!date) return "—";
   if (date.getTime() <= Date.now()) return "已到期";
   return (
-    <span title={formatDate(date)}>
+    <span title={`${formatBeijingDate(date)} 北京时间`}>
       {formatDistanceToNowStrict(date, { locale: zhCN })}后
     </span>
   );
@@ -75,15 +97,13 @@ export function OnlineUsersTable({ users }: OnlineUsersTableProps) {
       emptyTitle="暂无在线用户数据"
       emptyDescription="开启 Agent access log 或等待 3x-ui 流量同步后，会显示最近连接节点和活跃状态。"
     >
-      <DataTable aria-label="在线用户列表" className="min-w-[1280px]">
+      <DataTable aria-label="在线用户列表" className="min-w-[1120px]">
         <DataTableHead>
           <DataTableHeaderRow>
             <DataTableHeadCell>用户</DataTableHeadCell>
             <DataTableHeadCell>状态</DataTableHeadCell>
             <DataTableHeadCell>最后连接节点</DataTableHeadCell>
-            <DataTableHeadCell>最后活跃</DataTableHeadCell>
-            <DataTableHeadCell>来源 IP</DataTableHeadCell>
-            <DataTableHeadCell>目标网站</DataTableHeadCell>
+            <DataTableHeadCell>最后活跃（北京时间）</DataTableHeadCell>
             <DataTableHeadCell>本月用量</DataTableHeadCell>
             <DataTableHeadCell>总流量</DataTableHeadCell>
             <DataTableHeadCell>到期时间</DataTableHeadCell>
@@ -120,14 +140,8 @@ export function OnlineUsersTable({ users }: OnlineUsersTableProps) {
               <DataTableCell>
                 <div className="space-y-1">
                   <p className="font-medium">{formatAgo(user.lastActiveAt)}</p>
-                  {user.lastActiveAt && <p className="text-xs text-muted-foreground">{formatDate(user.lastActiveAt)}</p>}
+                  {user.lastActiveAt && <p className="text-xs text-muted-foreground">{formatBeijingDate(user.lastActiveAt)} 北京时间</p>}
                 </div>
-              </DataTableCell>
-              <DataTableCell className="max-w-40 whitespace-normal break-all tabular-nums">
-                {user.sourceIp ?? "—"}
-              </DataTableCell>
-              <DataTableCell className="max-w-56 whitespace-normal break-all">
-                {user.targetHost ?? "—"}
               </DataTableCell>
               <DataTableCell className="tabular-nums">
                 <span className="inline-flex items-center gap-1.5">
