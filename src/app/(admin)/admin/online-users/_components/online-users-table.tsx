@@ -1,6 +1,6 @@
 import { formatDistanceToNowStrict } from "date-fns";
 import { zhCN } from "date-fns/locale";
-import { Activity, Circle, Wifi } from "lucide-react";
+import { Activity, Circle, Users, Wifi } from "lucide-react";
 import { DataTableShell } from "@/components/admin/data-table-shell";
 import {
   DataTable,
@@ -58,7 +58,7 @@ function formatExpiry(date: Date | null) {
   if (!date) return "—";
   if (date.getTime() <= Date.now()) return "已到期";
   return (
-    <span title={`${formatBeijingDate(date)} 北京时间`}>
+    <span title={formatBeijingDate(date)}>
       {formatDistanceToNowStrict(date, { locale: zhCN })}后
     </span>
   );
@@ -97,13 +97,14 @@ export function OnlineUsersTable({ users }: OnlineUsersTableProps) {
       emptyTitle="暂无在线用户数据"
       emptyDescription="开启 Agent access log 或等待 3x-ui 流量同步后，会显示最近连接节点和活跃状态。"
     >
-      <DataTable aria-label="在线用户列表" className="min-w-[1120px]">
+      <DataTable aria-label="在线用户列表" className="min-w-[1180px]">
         <DataTableHead>
           <DataTableHeaderRow>
             <DataTableHeadCell>用户</DataTableHeadCell>
             <DataTableHeadCell>状态</DataTableHeadCell>
+            <DataTableHeadCell>在线数</DataTableHeadCell>
             <DataTableHeadCell>最后连接节点</DataTableHeadCell>
-            <DataTableHeadCell>最后活跃（北京时间）</DataTableHeadCell>
+            <DataTableHeadCell>最后活跃</DataTableHeadCell>
             <DataTableHeadCell>本月用量</DataTableHeadCell>
             <DataTableHeadCell>总流量</DataTableHeadCell>
             <DataTableHeadCell>到期时间</DataTableHeadCell>
@@ -127,6 +128,16 @@ export function OnlineUsersTable({ users }: OnlineUsersTableProps) {
               <DataTableCell>
                 <OnlineStateBadge state={user.onlineState} />
               </DataTableCell>
+              <DataTableCell className="tabular-nums">
+                {user.onlineSourceCount > 0 ? (
+                  <span className="inline-flex items-center gap-1.5" title="近 2 分钟不同来源数量">
+                    <Users className="size-3.5 text-muted-foreground" />
+                    {user.onlineSourceCount} 个
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </DataTableCell>
               <DataTableCell className="max-w-56 whitespace-normal break-words">
                 {user.lastNodeName ? (
                   <div className="space-y-1">
@@ -140,7 +151,7 @@ export function OnlineUsersTable({ users }: OnlineUsersTableProps) {
               <DataTableCell>
                 <div className="space-y-1">
                   <p className="font-medium">{formatAgo(user.lastActiveAt)}</p>
-                  {user.lastActiveAt && <p className="text-xs text-muted-foreground">{formatBeijingDate(user.lastActiveAt)} 北京时间</p>}
+                  {user.lastActiveAt && <p className="text-xs text-muted-foreground">{formatBeijingDate(user.lastActiveAt)}</p>}
                 </div>
               </DataTableCell>
               <DataTableCell className="tabular-nums">

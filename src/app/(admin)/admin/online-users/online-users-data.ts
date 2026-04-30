@@ -47,6 +47,7 @@ export interface OnlineUserRow {
   userStatus: UserStatus;
   onlineState: OnlineState;
   activeSubscriptionCount: number;
+  onlineSourceCount: number;
   lastNodeName: string | null;
   lastInboundName: string | null;
   lastActiveAt: Date | null;
@@ -130,6 +131,7 @@ export async function getOnlineUsersPageData(
   const online = typeof searchParams.online === "string" ? searchParams.online : "";
   const status = typeof searchParams.status === "string" ? searchParams.status : "";
   const now = new Date();
+  const onlineWindowStart = new Date(now.getTime() - ONLINE_WINDOW_MS);
 
   const where = {
     ...(status ? { status: status as UserStatus } : {}),
@@ -167,7 +169,7 @@ export async function getOnlineUsersPageData(
   const nodeClientMap = new Map(nodeClients.map((client) => [client.id, client]));
   const clientIds = nodeClients.map((client) => client.id);
 
-  const [latestAccessLogs, latestTrafficLogs, monthlyTrafficGroups] = await Promise.all([
+  const [latestAccessLogs, latestTrafficLogs, monthlyTrafficGroups, recentAccessLogs] = await Promise.all([
     userIds.length
       ? prisma.subscriptionAccessLog.findMany({
           where: {
@@ -201,6 +203,20 @@ export async function getOnlineUsersPageData(
           _sum: { upload: true, download: true },
         })
       : [],
+    userIds.length
+      ? prisma.subscriptionAccessLog.findMany({
+          where: {
+            userId: { in: userIds },
+            userAgent: "jboard-agent/xray-access-log",
+            allowed: true,
+            createdAt: { gte: onlineWindowStart },
+          },
+          select: {
+            userId: true,
+            ip: true,
+          },
+        })
+      : [],
   ]);
 
   const accessLogByUserId = new Map(
@@ -208,6 +224,14 @@ export async function getOnlineUsersPageData(
       .filter((log) => log.userId)
       .map((log) => [log.userId!, log]),
   );
+
+  const onlineSourceIpsByUserId = new Map<string, Set<string>>();
+  for (const log of recentAccessLogs) {
+    if (!log.userId || !log.ip) continue;
+    const ips = onlineSourceIpsByUserId.get(log.userId) ?? new Set<string>();
+    ips.add(log.ip);
+    onlineSourceIpsByUserId.set(log.userId, ips);
+  }
 
   const latestTrafficByUserId = new Map<string, { timestamp: Date; client: NodeClientWithNode }>();
   for (const log of latestTrafficLogs) {
@@ -253,6 +277,7 @@ export async function getOnlineUsersPageData(
       userStatus: user.status,
       onlineState: getOnlineState(user, lastActiveAt, now),
       activeSubscriptionCount: user.subscriptions.length,
+      onlineSourceCount: onlineSourceIpsByUserId.get(user.id)?.size ?? 0,
       lastNodeName: nodeName,
       lastInboundName: inboundName,
       lastActiveAt,
