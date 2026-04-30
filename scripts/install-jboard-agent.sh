@@ -15,8 +15,9 @@ XRAY_LOG_INTERVAL="${XRAY_LOG_INTERVAL:-1m}"
 XRAY_LOG_STATE_FILE="${XRAY_LOG_STATE_FILE:-/var/lib/jboard-agent/xray-log-state.json}"
 XRAY_LOG_START_AT_END="${XRAY_LOG_START_AT_END:-1}"
 INSTALL_NEXTTRACE="${INSTALL_NEXTTRACE:-1}"
-BUILD_FROM_SOURCE="${BUILD_FROM_SOURCE:-auto}"
+BUILD_FROM_SOURCE="${BUILD_FROM_SOURCE:-0}"
 AGENT_REF="${AGENT_REF:-main}"
+AGENT_BINARY_BASE_URL="${AGENT_BINARY_BASE_URL:-https://raw.githubusercontent.com/${GH_REPO}/${AGENT_REF}/agent/jboard-agent/dist}"
 GO_VERSION="${GO_VERSION:-1.22.12}"
 TMP_DIR="$(mktemp -d)"
 ARCH="$(uname -m)"
@@ -118,6 +119,33 @@ build_agent_from_source() {
     cd "$TMP_DIR/source/agent/jboard-agent"
     GOOS=linux GOARCH="$goarch" "$go_bin" build -ldflags "-s -w" -o "$TMP_DIR/$ASSET" ./cmd/agent
   )
+}
+
+
+download_agent_prebuilt() {
+  local binary_url="${AGENT_BINARY_URL:-${AGENT_BINARY_BASE_URL}/${ASSET}}"
+  local checksums_url="${AGENT_CHECKSUMS_URL:-${AGENT_BINARY_BASE_URL}/SHA256SUMS}"
+
+  echo "Downloading prebuilt probe agent: ${binary_url}"
+  if ! curl -fsSL "$binary_url" -o "$TMP_DIR/$ASSET"; then
+    return 1
+  fi
+
+  if curl -fsSL "$checksums_url" -o "$TMP_DIR/SHA256SUMS" 2>/dev/null; then
+    if grep "  ${ASSET}$" "$TMP_DIR/SHA256SUMS" > "$TMP_DIR/SHA256SUMS.current"; then
+      (
+        cd "$TMP_DIR"
+        if command -v sha256sum >/dev/null 2>&1; then
+          sha256sum -c SHA256SUMS.current >/dev/null
+        else
+          shasum -a 256 -c SHA256SUMS.current >/dev/null
+        fi
+      )
+      echo "Checksum verified."
+    fi
+  fi
+
+  return 0
 }
 
 resolve_release_tag() {
@@ -277,50 +305,33 @@ SERVICE
 }
 
 ASSET="$(detect_asset)"
-DOWNLOADED_RELEASE=0
+DOWNLOADED_AGENT=0
 
 if [ "$BUILD_FROM_SOURCE" = "1" ] || [ "$BUILD_FROM_SOURCE" = "true" ]; then
   echo "[1/10] Building from source is forced."
   build_agent_from_source
+  DOWNLOADED_AGENT=1
 else
-  RESOLVED_TAG="$(resolve_release_tag || true)"
-  if [ -n "$RESOLVED_TAG" ]; then
-    DOWNLOAD_BASE="https://github.com/${GH_REPO}/releases/download/${RESOLVED_TAG}"
-    DOWNLOAD_URL="${DOWNLOAD_BASE}/${ASSET}"
-    CHECKSUM_URL="${DOWNLOAD_BASE}/SHA256SUMS"
-
-    echo "[1/10] Release tag: ${RESOLVED_TAG} (${GH_REPO})"
-    echo "[2/10] Downloading probe agent binary: ${ASSET}"
-    if curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/$ASSET"; then
-      DOWNLOADED_RELEASE=1
-      if curl -fsSL "$CHECKSUM_URL" -o "$TMP_DIR/SHA256SUMS" 2>/dev/null; then
-        echo "[3/10] Verifying checksum..."
-        grep "  ${ASSET}$" "$TMP_DIR/SHA256SUMS" > "$TMP_DIR/SHA256SUMS.current"
-        (
-          cd "$TMP_DIR"
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum -c SHA256SUMS.current >/dev/null
-          else
-            shasum -a 256 -c SHA256SUMS.current >/dev/null
-          fi
-        )
-      else
-        echo "[3/10] Checksum file not found; skipping verification."
-      fi
-    else
-      echo "Release asset not found for ${GH_REPO}@${RESOLVED_TAG}; will build from source."
-    fi
+  echo "[1/10] Downloading prebuilt agent from repository..."
+  if download_agent_prebuilt; then
+    DOWNLOADED_AGENT=1
   else
-    echo "No GitHub release found for ${GH_REPO}; will build from source."
+    echo "Prebuilt binary not found in repository; trying GitHub release..."
+    RESOLVED_TAG="$(resolve_release_tag || true)"
+    if [ -n "$RESOLVED_TAG" ]; then
+      DOWNLOAD_BASE="https://github.com/${GH_REPO}/releases/download/${RESOLVED_TAG}"
+      AGENT_BINARY_URL="${DOWNLOAD_BASE}/${ASSET}"
+      AGENT_CHECKSUMS_URL="${DOWNLOAD_BASE}/SHA256SUMS"
+      if download_agent_prebuilt; then
+        DOWNLOADED_AGENT=1
+      fi
+    fi
   fi
 
-  if [ "$DOWNLOADED_RELEASE" != "1" ]; then
-    if [ "$BUILD_FROM_SOURCE" = "0" ] || [ "$BUILD_FROM_SOURCE" = "false" ]; then
-      echo "Release download failed and BUILD_FROM_SOURCE is disabled." >&2
-      exit 1
-    fi
-    echo "[2/10] Building probe agent from source..."
-    build_agent_from_source
+  if [ "$DOWNLOADED_AGENT" != "1" ]; then
+    echo "Failed to download prebuilt agent binary." >&2
+    echo "Do not compile on small nodes by default. If you really want to compile here, rerun with BUILD_FROM_SOURCE=1." >&2
+    exit 1
   fi
 fi
 

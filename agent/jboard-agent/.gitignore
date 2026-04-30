@@ -1,3 +1,7 @@
 jboard-agent
 jboard-agent-linux-amd64
 jboard-agent-linux-arm64
+!dist/
+!dist/jboard-agent-linux-amd64
+!dist/jboard-agent-linux-arm64
+!dist/SHA256SUMS
