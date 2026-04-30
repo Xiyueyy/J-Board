@@ -12,7 +12,7 @@ export function ResetAccessButton({ subscriptionId }: { subscriptionId: string }
     <ConfirmActionButton
       size="sm"
       variant="outline"
-      className="flex-1 sm:flex-none"
+      className="h-10 w-full sm:h-8 sm:w-auto sm:flex-none"
       title="重置订阅访问？"
       description="我们会为这条订阅生成新的访问凭据。旧链接会失效，请在客户端重新导入。"
       confirmLabel="重置访问"

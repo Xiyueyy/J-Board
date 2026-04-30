@@ -91,10 +91,10 @@ export function ConfirmActionButton({
             <DialogDescription>{description}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={loading}>
+            <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setOpen(false)} disabled={loading}>
               {cancelLabel}
             </Button>
-            <Button type="button" variant="destructive" onClick={() => void runAction()} disabled={loading}>
+            <Button type="button" variant="destructive" className="w-full sm:w-auto" onClick={() => void runAction()} disabled={loading}>
               {loading ? "处理中..." : confirmLabel}
             </Button>
           </DialogFooter>

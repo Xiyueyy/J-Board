@@ -45,10 +45,10 @@ export function SubscriptionActions({
   topupConfig,
 }: Props) {
   return (
-    <div className="flex flex-wrap gap-2 rounded-lg border border-border bg-background p-2">
+    <div className="grid grid-cols-2 gap-2 rounded-lg border border-border bg-background p-2 sm:flex sm:flex-wrap">
       <Link
         href={`/subscriptions/${subscriptionId}`}
-        className={cn(buttonVariants({ size: "sm", variant: "outline" }), "flex-1 sm:flex-none")}
+        className={cn(buttonVariants({ size: "sm", variant: "outline" }), "h-10 w-full sm:h-8 sm:w-auto sm:flex-none")}
       >
         详情
         <ArrowUpRight className="size-3.5" />

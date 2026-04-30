@@ -10,6 +10,7 @@ import { AggregateSubscriptionCard } from "./aggregate-subscription-card";
 
 interface ActiveSubscriptionsSectionProps {
   subscriptions: SubscriptionRecord[];
+  baseUrl: string;
   aggregateSubscriptionUrl: string | null;
   poolMap: Map<string, PlanTrafficPoolState>;
 }
@@ -67,6 +68,7 @@ function getProxySummary(subscriptions: SubscriptionRecord[]) {
 
 export function ActiveSubscriptionsSection({
   subscriptions,
+  baseUrl,
   aggregateSubscriptionUrl,
   poolMap,
 }: ActiveSubscriptionsSectionProps) {
@@ -105,7 +107,7 @@ export function ActiveSubscriptionsSection({
             <div className="space-y-4">
               <SectionHeader
                 title="节点概览"
-                description="节点卡片只保留状态、流量和操作；配置、二维码和日志放到详情页。"
+                description="手机端可直接扫码导入；更完整的配置和日志仍可进入详情页查看。"
                 actions={<Radio className="size-5 text-primary" />}
               />
               {proxyGroups.map((group, index) => (
@@ -117,7 +119,7 @@ export function ActiveSubscriptionsSection({
                 >
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {group.items.map((sub) => (
-                      <ActiveSubscriptionCard key={sub.id} sub={sub} poolMap={poolMap} />
+                      <ActiveSubscriptionCard key={sub.id} sub={sub} baseUrl={baseUrl} poolMap={poolMap} />
                     ))}
                   </div>
                 </CollapsibleGroup>
@@ -141,7 +143,7 @@ export function ActiveSubscriptionsSection({
                 >
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {group.items.map((sub) => (
-                      <ActiveSubscriptionCard key={sub.id} sub={sub} poolMap={poolMap} />
+                      <ActiveSubscriptionCard key={sub.id} sub={sub} baseUrl={baseUrl} poolMap={poolMap} />
                     ))}
                   </div>
                 </CollapsibleGroup>

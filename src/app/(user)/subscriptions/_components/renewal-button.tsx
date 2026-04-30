@@ -81,7 +81,7 @@ export function RenewalButton({
           setRenewalDays(minDays);
           setOpen(true);
         }}
-        className="flex-1 sm:flex-none"
+        className="h-10 w-full sm:h-8 sm:w-auto sm:flex-none"
       >
         <RefreshCw className="size-3.5" />
         续费

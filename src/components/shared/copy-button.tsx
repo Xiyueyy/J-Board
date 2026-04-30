@@ -5,13 +5,22 @@ import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
-export function CopyButton({ text, label = "复制" }: { text: string; label?: string }) {
+export function CopyButton({
+  text,
+  label = "复制",
+  className,
+}: {
+  text: string;
+  label?: string;
+  className?: string;
+}) {
   const [copied, setCopied] = useState(false);
 
   return (
     <Button
       variant={copied ? "default" : "outline"}
       size="sm"
+      className={className}
       onClick={async () => {
         await navigator.clipboard.writeText(text);
         setCopied(true);

@@ -4,9 +4,11 @@ import { zhCN } from "date-fns/locale";
 import { ArrowUpRight, CalendarClock, Database, Radio, Server, Tv } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { QrPreview } from "@/components/shared/qr-preview";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { formatBytes } from "@/lib/utils";
 import { SubscriptionActions } from "../subscription-actions";
+import { withSubscriptionFormat } from "./subscription-import-actions";
 import {
   getPlanTypeLabel,
   getPlanTypeTone,
@@ -17,6 +19,7 @@ import type { PlanTrafficPoolState } from "@/services/plan-traffic-pool";
 
 interface ActiveSubscriptionCardProps {
   sub: SubscriptionRecord;
+  baseUrl: string;
   poolMap: Map<string, PlanTrafficPoolState>;
 }
 
@@ -94,7 +97,25 @@ function StreamingCompactSummary({ sub }: { sub: SubscriptionRecord }) {
   );
 }
 
-export function ActiveSubscriptionCard({ sub, poolMap }: ActiveSubscriptionCardProps) {
+function MobileSubscriptionQr({ sub, baseUrl }: { sub: SubscriptionRecord; baseUrl: string }) {
+  if (sub.plan.type !== "PROXY" || !sub.nodeClient || !baseUrl) return null;
+
+  const subUrl = `${baseUrl}/api/subscription/${sub.id}?token=${sub.downloadToken}`;
+  const clashUrl = withSubscriptionFormat(subUrl, "clash");
+
+  return (
+    <div className="md:hidden">
+      <QrPreview
+        label="Clash 订阅二维码"
+        value={clashUrl}
+        alt="Clash 订阅二维码"
+        className="bg-background/75"
+      />
+    </div>
+  );
+}
+
+export function ActiveSubscriptionCard({ sub, baseUrl, poolMap }: ActiveSubscriptionCardProps) {
   return (
     <Card className="group overflow-hidden transition-colors duration-200 hover:border-primary/25 hover:bg-muted/10">
       <CardHeader className="gap-3 p-4 pb-2">
@@ -127,6 +148,7 @@ export function ActiveSubscriptionCard({ sub, poolMap }: ActiveSubscriptionCardP
       <CardContent className="space-y-3 p-4 pt-1">
         <ProxyCompactSummary sub={sub} />
         <StreamingCompactSummary sub={sub} />
+        <MobileSubscriptionQr sub={sub} baseUrl={baseUrl} />
         <SubscriptionActions
           subscriptionId={sub.id}
           type={sub.plan.type}

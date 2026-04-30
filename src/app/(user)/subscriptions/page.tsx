@@ -49,6 +49,7 @@ export default async function SubscriptionsPage() {
 
       <ActiveSubscriptionsSection
         subscriptions={activeSubs}
+        baseUrl={baseUrl}
         aggregateSubscriptionUrl={aggregateSubscriptionUrl}
         poolMap={poolMap}
       />
