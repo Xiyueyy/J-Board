@@ -33,7 +33,7 @@ export const metadata: Metadata = {
 
 export default async function StorePage() {
   const session = await getActiveSession();
-  const { plans, availabilityMap, pendingOrder, latencyRecommendations } = await getStorePageData(session?.user.id);
+  const { plans, availabilityMap, pendingOrder, latencyRecommendations } = await getStorePageData(session?.user.id, session?.user.role);
   const bundlePlans = getBundlePlans(plans);
   const proxyPlans = getProxyPlans(plans);
   const streamingPlans = getStreamingPlans(plans);

@@ -21,6 +21,8 @@ interface PlanPolicySectionProps {
   fieldId: FieldId;
   type: PlanType;
   plan?: PlanFormValue;
+  isPublic: boolean;
+  setIsPublic: Dispatch<SetStateAction<boolean>>;
   allowRenewal: boolean;
   setAllowRenewal: Dispatch<SetStateAction<boolean>>;
   allowTrafficTopup: boolean;
@@ -35,6 +37,8 @@ export function PlanPolicySection({
   fieldId,
   type,
   plan,
+  isPublic,
+  setIsPublic,
   allowRenewal,
   setAllowRenewal,
   allowTrafficTopup,
@@ -47,6 +51,13 @@ export function PlanPolicySection({
   return (
     <>
       <div className="form-panel grid gap-4 sm:grid-cols-2">
+        <div className="flex items-center justify-between gap-4 rounded-lg bg-muted/20 p-3">
+          <div>
+            <p id={fieldId("isPublic-label")} className="text-sm font-medium">公开销售</p>
+            <p className="text-xs text-muted-foreground">关闭后仅管理员可在商店看到并免费开通</p>
+          </div>
+          <Switch aria-labelledby={fieldId("isPublic-label")} checked={isPublic} onCheckedChange={setIsPublic} />
+        </div>
         {type !== "BUNDLE" && (
           <div className="flex items-center justify-between gap-4 rounded-lg bg-muted/20 p-3">
             <div>

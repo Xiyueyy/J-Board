@@ -27,6 +27,12 @@ async function assertNoPendingOrder(userId: string) {
   }
 }
 
+function assertPlanVisible(plan: { name: string; isPublic: boolean }, role: string) {
+  if (!plan.isPublic && role !== "ADMIN") {
+    throw new Error(`${plan.name} 仅管理员可见，当前账号不能开通`);
+  }
+}
+
 function getOrderPricing(amount: number, role: string) {
   const subtotalAmount = roundMoney(amount);
   if (role === "ADMIN") {
@@ -214,7 +220,9 @@ function getBundleChildSelectableInboundIds(
   return [];
 }
 
-async function buildBundleOrderItems(plan: BundlePlanForCart, userId: string) {
+async function buildBundleOrderItems(plan: BundlePlanForCart, userId: string, role: string) {
+  assertPlanVisible(plan, role);
+
   const availability = await getPlanAvailability(plan, { userId });
   if (!availability.available) {
     throw new Error(`${plan.name}：${buildUnavailableMessage(availability)}`);
@@ -234,6 +242,7 @@ async function buildBundleOrderItems(plan: BundlePlanForCart, userId: string) {
     if (!childPlan.isActive) {
       throw new Error(`${childPlan.name} 已下架，请先移出购物车`);
     }
+    assertPlanVisible(childPlan, role);
     if (childPlan.type === "BUNDLE") {
       throw new Error("聚合套餐暂不支持嵌套另一个聚合套餐");
     }
@@ -296,6 +305,7 @@ export async function addProxyPlanToCart(
 ) {
   const session = await requireAuth();
   const plan = await getProxyPlanForCart(planId);
+  assertPlanVisible(plan, session.user.role);
   await assertCartHasNoBundle(session.user.id);
   assertInboundSelectable(plan, selectedInboundId);
 
@@ -353,6 +363,7 @@ export async function addStreamingPlanToCart(planId: string) {
       `套餐类型不匹配：${plan.name} 是 ${plan.type}，不能作为流媒体套餐加入购物车`,
     );
   if (!plan.isActive) throw new Error(`套餐已下架：${plan.name} 当前不可购买`);
+  assertPlanVisible(plan, session.user.role);
   await assertCartHasNoBundle(session.user.id);
 
   const availability = await getPlanAvailability(plan, {
@@ -390,8 +401,9 @@ export async function addStreamingPlanToCart(planId: string) {
 export async function addBundlePlanToCart(planId: string) {
   const session = await requireAuth();
   const plan = await getBundlePlanForCart(planId);
+  assertPlanVisible(plan, session.user.role);
   await assertBundleCanBeSingleCartItem(session.user.id, planId);
-  const { trafficByPlan } = await buildBundleOrderItems(plan, session.user.id);
+  const { trafficByPlan } = await buildBundleOrderItems(plan, session.user.id, session.user.role);
 
   for (const [childPlanId, trafficGb] of trafficByPlan) {
     await ensurePlanTrafficPoolCapacity(childPlanId, trafficGb, {
@@ -493,6 +505,7 @@ export async function checkoutCart(
   for (const item of items) {
     if (!item.plan.isActive)
       throw new Error(`${item.plan.name} 已下架，请先移出购物车`);
+    assertPlanVisible(item.plan, session.user.role);
 
     if (item.plan.type === "PROXY") {
       const availability = await getPlanAvailability(item.plan, {
@@ -548,7 +561,7 @@ export async function checkoutCart(
       const {
         orderItems: bundleOrderItems,
         trafficByPlan: bundleTrafficByPlan,
-      } = await buildBundleOrderItems(item.plan, session.user.id);
+      } = await buildBundleOrderItems(item.plan, session.user.id, session.user.role);
       orderItems.push(...bundleOrderItems);
       for (const [childPlanId, trafficGb] of bundleTrafficByPlan) {
         trafficByPlan.set(

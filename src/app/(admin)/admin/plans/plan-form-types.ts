@@ -47,6 +47,7 @@ export interface PlanFormValue {
   description: string | null;
   durationDays: number;
   sortOrder: number;
+  isPublic: boolean;
   price: number | null;
   nodeId: string | null;
   inboundId: string | null;

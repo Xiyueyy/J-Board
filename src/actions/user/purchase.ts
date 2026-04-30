@@ -109,6 +109,12 @@ function getTrafficTopupOrderPrice(
   return roundMoney(pricePerGb * trafficGb);
 }
 
+function assertPlanVisible(plan: { name: string; isPublic: boolean }, role: string) {
+  if (!plan.isPublic && role !== "ADMIN") {
+    throw new Error(`${plan.name} 仅管理员可见，当前账号不能开通`);
+  }
+}
+
 function getOrderPricing(amount: number, role: string) {
   const subtotalAmount = roundMoney(amount);
   if (role === "ADMIN") {
@@ -187,11 +193,12 @@ function getBundleChildSelectableInboundIds(childPlan: BundlePlanForPurchase["bu
   return [];
 }
 
-async function buildBundleOrderItems(plan: BundlePlanForPurchase, userId: string) {
+async function buildBundleOrderItems(plan: BundlePlanForPurchase, userId: string, role: string) {
   if (plan.type !== "BUNDLE") {
     throw new Error(`套餐类型不匹配：${plan.name} 是 ${plan.type}，不能作为聚合套餐购买`);
   }
   if (!plan.isActive) throw new Error(`套餐已下架：${plan.name} 当前不可购买`);
+  assertPlanVisible(plan, role);
   if (plan.bundleItems.length === 0) throw new Error(`${plan.name} 暂未配置打包内容`);
 
   const availability = await getPlanAvailability(plan, { userId });
@@ -213,6 +220,7 @@ async function buildBundleOrderItems(plan: BundlePlanForPurchase, userId: string
     if (!childPlan.isActive) {
       throw new Error(`${childPlan.name} 已下架，聚合套餐暂时不能购买`);
     }
+    assertPlanVisible(childPlan, role);
     if (childPlan.type === "BUNDLE") {
       throw new Error("聚合套餐暂不支持嵌套购买另一个聚合套餐");
     }
@@ -291,6 +299,7 @@ export async function purchaseProxy(
 
   if (plan.type !== "PROXY") throw new Error(`套餐类型不匹配：${plan.name} 是 ${plan.type}，不能作为代理套餐购买`);
   if (!plan.isActive) throw new Error(`套餐已下架：${plan.name} 当前不可购买`);
+  assertPlanVisible(plan, session.user.role);
 
   const price = getPlanPurchasePrice(plan, trafficGb);
 
@@ -374,6 +383,7 @@ export async function purchaseStreaming(planId: string): Promise<string> {
 
   if (plan.type !== "STREAMING") throw new Error(`套餐类型不匹配：${plan.name} 是 ${plan.type}，不能作为流媒体套餐购买`);
   if (!plan.isActive) throw new Error(`套餐已下架：${plan.name} 当前不可购买`);
+  assertPlanVisible(plan, session.user.role);
 
   const availability = await getPlanAvailability(plan, { userId: session.user.id });
   if (!availability.available) {
@@ -413,7 +423,7 @@ export async function purchaseBundle(planId: string): Promise<string> {
 
   const plan = await getBundlePlanForPurchase(planId);
   const amount = getBundlePriceAmount(plan);
-  const orderItems = await buildBundleOrderItems(plan, session.user.id);
+  const orderItems = await buildBundleOrderItems(plan, session.user.id, session.user.role);
   const orderPricing = getOrderPricing(amount, session.user.role);
 
   const order = await prisma.order.create({

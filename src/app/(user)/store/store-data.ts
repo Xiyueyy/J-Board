@@ -3,10 +3,13 @@ import { normalizeTraceText } from "@/lib/trace-normalize";
 import { getPlanAvailability, type PlanAvailability } from "@/services/plan-availability";
 import { getLatencyRecommendations } from "@/services/latency-recommendations";
 
-export async function getStorePageData(userId?: string) {
+export async function getStorePageData(userId?: string, role?: string) {
   const [plans, pendingOrder, latencyRecommendations] = await Promise.all([
     prisma.subscriptionPlan.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        ...(role === "ADMIN" ? {} : { isPublic: true }),
+      },
       include: {
         node: true,
         inbound: true,

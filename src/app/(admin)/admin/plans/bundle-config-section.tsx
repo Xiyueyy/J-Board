@@ -50,6 +50,10 @@ function describeCandidate(candidate: BundlePlanCandidate) {
   return `代理套餐 · ${candidate.minTrafficGb ?? 0}-${candidate.maxTrafficGb ?? 0} GB`;
 }
 
+function formatCandidateInbound(inbound: BundlePlanCandidate["inbounds"][number]) {
+  return inbound.displayName || inbound.tag || `${inbound.protocol}:${inbound.port}`;
+}
+
 export function BundleConfigSection({
   fieldId,
   candidates,
@@ -132,7 +136,9 @@ export function BundleConfigSection({
                     }}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="选择子套餐" />
+                      <SelectValue placeholder="选择子套餐">
+                        {(value) => candidateMap.get(value as string)?.name ?? "选择子套餐"}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {candidates.map((option) => (
@@ -160,12 +166,17 @@ export function BundleConfigSection({
                       onValueChange={(selectedInboundId) => updateItem(index, (current) => ({ ...current, selectedInboundId: selectedInboundId || null }))}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="选择入站" />
+                        <SelectValue placeholder="选择入站">
+                          {(value) => {
+                            const inbound = candidate.inbounds.find((item) => item.id === value);
+                            return inbound ? formatCandidateInbound(inbound) : "选择入站";
+                          }}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         {candidate.inbounds.map((inbound) => (
                           <SelectItem key={inbound.id} value={inbound.id}>
-                            {inbound.displayName || inbound.tag || `${inbound.protocol}:${inbound.port}`}
+                            {formatCandidateInbound(inbound)}
                           </SelectItem>
                         ))}
                       </SelectContent>

@@ -239,6 +239,7 @@ model SubscriptionPlan {
   description          String?
   durationDays         Int
   isActive             Boolean          @default(true)
+  isPublic             Boolean          @default(true)
   isFeatured           Boolean          @default(false)
   recommendationLabel  String?
   recommendationReason String?

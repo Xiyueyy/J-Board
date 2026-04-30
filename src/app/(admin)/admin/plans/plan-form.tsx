@@ -72,6 +72,8 @@ export function PlanForm({
     setPricingMode,
     bundleItems,
     setBundleItems,
+    isPublic,
+    setIsPublic,
     allowRenewal,
     setAllowRenewal,
     allowTrafficTopup,
@@ -97,6 +99,7 @@ export function PlanForm({
     const formData = new FormData(event.currentTarget);
     const effectiveAllowRenewal = type !== "BUNDLE" && allowRenewal;
     formData.set("type", type);
+    formData.set("isPublic", String(isPublic));
     formData.set("allowRenewal", String(effectiveAllowRenewal));
     formData.set("allowTrafficTopup", String(type === "PROXY" ? allowTrafficTopup : false));
     formData.set("pricingMode", type === "PROXY" ? pricingMode : "TRAFFIC_SLIDER");
@@ -278,6 +281,8 @@ export function PlanForm({
                 fieldId={fieldId}
                 type={type}
                 plan={plan}
+                isPublic={isPublic}
+                setIsPublic={setIsPublic}
                 allowRenewal={allowRenewal}
                 setAllowRenewal={setAllowRenewal}
                 allowTrafficTopup={allowTrafficTopup}

@@ -19,6 +19,7 @@ interface PlanListItem {
   durationDays: number;
   sortOrder: number;
   isActive: boolean;
+  isPublic: boolean;
   price: NumericLike;
   nodeId: string | null;
   inboundId: string | null;
@@ -106,6 +107,7 @@ function buildPlanFormValue(plan: PlanListItem): PlanFormValue {
     description: plan.description,
     durationDays: plan.durationDays,
     sortOrder: plan.sortOrder,
+    isPublic: plan.isPublic,
     price: toNumber(plan.price),
     nodeId: plan.nodeId,
     inboundId: plan.inboundId,
@@ -183,6 +185,9 @@ export function PlanCard({ plan, activeCount, services, bundleCandidates, batchF
             {plan.type === "PROXY" ? "代理套餐" : plan.type === "STREAMING" ? "流媒体套餐" : "聚合套餐"}
           </StatusBadge>
           <ActiveStatusBadge active={plan.isActive} activeLabel="上架中" inactiveLabel="已下架" />
+          <StatusBadge tone={plan.isPublic ? "neutral" : "info"}>
+            {plan.isPublic ? "公开" : "仅管理员"}
+          </StatusBadge>
           <StatusBadge>{plan.durationDays} 天</StatusBadge>
           <StatusBadge>
             {plan.type === "PROXY"
