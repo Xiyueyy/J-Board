@@ -1,12 +1,10 @@
-import type { ReactNode } from "react";
-import { ArrowDownToLine, ArrowUpFromLine, Server, Users, Waypoints } from "lucide-react";
+import { Server, Waypoints } from "lucide-react";
 import Link from "next/link";
 import { batchTestNodeConnections } from "@/actions/admin/nodes";
 import { BatchActionBar, BatchActionButton } from "@/components/admin/batch-action-bar";
 import { EmptyState } from "@/components/shared/page-shell";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn, formatBytes } from "@/lib/utils";
 import { InboundDeleteButton } from "../inbound-delete-button";
 import { InboundDisplayNameForm } from "../inbound-display-name-form";
 import { NodeActions } from "../node-actions";
@@ -14,53 +12,6 @@ import { NodeForm } from "../node-form";
 import type { NodeServerRow } from "../nodes-data";
 
 const NODE_BATCH_FORM_ID = "node-batch-form";
-
-function formatSpeed(bytes: bigint | number) {
-  return `${formatBytes(bytes)}/s`;
-}
-
-function MetricItem({ icon, label, value, muted = false }: { icon: ReactNode; label: string; value: string; muted?: boolean }) {
-  return (
-    <div className="rounded-lg border border-border bg-muted/20 px-4 py-3">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        {icon}
-        {label}
-      </div>
-      <p className={cn("mt-2 text-lg font-semibold tabular-nums", muted && "text-muted-foreground")}>{value}</p>
-    </div>
-  );
-}
-
-function NodeRealtimeStats({ node }: { node: NodeServerRow }) {
-  const metric = node.systemMetric;
-  const metricFresh = node.systemMetricFresh;
-  const metricHint = node.systemMetricHint;
-
-  return (
-    <div className="space-y-2">
-      <div className="grid gap-3 md:grid-cols-3">
-        <MetricItem
-          icon={<ArrowDownToLine className="size-3.5 text-sky-500" />}
-          label="整机入站速度"
-          value={metric ? formatSpeed(metric.inboundBps) : "未上报"}
-          muted={!metric || !metricFresh}
-        />
-        <MetricItem
-          icon={<ArrowUpFromLine className="size-3.5 text-emerald-500" />}
-          label="整机出站速度"
-          value={metric ? formatSpeed(metric.outboundBps) : "未上报"}
-          muted={!metric || !metricFresh}
-        />
-        <MetricItem
-          icon={<Users className="size-3.5 text-primary" />}
-          label="3x-ui 在线用户"
-          value={`${node.onlineUserCount} 个`}
-        />
-      </div>
-      <p className="text-[11px] text-muted-foreground">{metricHint}</p>
-    </div>
-  );
-}
 
 function PanelInfoBar({ node }: { node: NodeServerRow }) {
   return (
@@ -121,7 +72,6 @@ function NodeCard({ node, siteUrl }: { node: NodeServerRow; siteUrl: string | nu
       </CardHeader>
       <CardContent className="space-y-4">
         <PanelInfoBar node={node} />
-        <NodeRealtimeStats node={node} />
         {node.inbounds.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {node.inbounds.map((inbound) => (

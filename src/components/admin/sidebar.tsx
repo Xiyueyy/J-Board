@@ -28,6 +28,7 @@ export const adminLinks: SidebarLink[] = [
   { href: "/admin/commerce", label: "商业配置", icon: <BadgePercent size={16} /> },
   { href: "/admin/services", label: "流媒体", icon: <Film size={16} /> },
   { href: "/admin/nodes", label: "节点管理", icon: <Globe size={16} /> },
+  { href: "/admin/node-realtime", label: "节点实时", icon: <Activity size={16} /> },
   { href: "/admin/users", label: "用户管理", icon: <Users size={16} /> },
   { href: "/admin/online-users", label: "在线用户", icon: <Wifi size={16} /> },
   { href: "/admin/orders", label: "订单管理", icon: <ClipboardList size={16} /> },
@@ -50,21 +51,21 @@ export const adminNavGroups: SidebarGroup[] = [
   },
   {
     label: "商品与订单",
-    links: [adminLinks[1], adminLinks[2], adminLinks[3], adminLinks[7], adminLinks[8], adminLinks[9], adminLinks[10]],
+    links: [adminLinks[1], adminLinks[2], adminLinks[3], adminLinks[8], adminLinks[9], adminLinks[10], adminLinks[11]],
   },
   {
     label: "基础设施",
-    links: [adminLinks[4], adminLinks[11], adminLinks[12], adminLinks[13]],
+    links: [adminLinks[4], adminLinks[5], adminLinks[12], adminLinks[13], adminLinks[14]],
     defaultCollapsed: true,
   },
   {
     label: "用户支持",
-    links: [adminLinks[5], adminLinks[6], adminLinks[14], adminLinks[15]],
+    links: [adminLinks[6], adminLinks[7], adminLinks[15], adminLinks[16]],
     defaultCollapsed: true,
   },
   {
     label: "系统",
-    links: [adminLinks[16], adminLinks[17]],
+    links: [adminLinks[17], adminLinks[18]],
     defaultCollapsed: true,
   },
 ];
