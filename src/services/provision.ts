@@ -24,6 +24,10 @@ type NewOrderItem = Pick<OrderItem, "planId" | "selectedInboundId" | "trafficGb"
   plan: SubscriptionPlan;
 };
 
+function getNewPurchaseDurationDays(order: PaidOrder, item: NewOrderItem) {
+  return order.plan.type === "BUNDLE" ? order.plan.durationDays : item.plan.durationDays;
+}
+
 export async function provisionSubscription(order: PaidOrder): Promise<string[]> {
   return provisionSubscriptionWithDb(order, prisma);
 }
@@ -94,7 +98,7 @@ async function provisionNewSubscription(order: PaidOrder, db: DbClient): Promise
         userId: order.userId,
         planId: item.planId,
         startDate: new Date(),
-        endDate: addDays(new Date(), item.plan.durationDays),
+        endDate: addDays(new Date(), getNewPurchaseDurationDays(order, item)),
         trafficLimit: trafficBytes,
         status: "ACTIVE",
       },

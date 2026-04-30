@@ -125,7 +125,7 @@ export function toBundlePlanCard(
       id: item.id,
       name: normalizeTraceText(item.childPlan.name),
       type: item.childPlan.type === "PROXY" ? "PROXY" : "STREAMING",
-      durationDays: item.childPlan.durationDays,
+      durationDays: plan.durationDays,
       trafficGb: item.trafficGb,
       nodeName: item.childPlan.node?.name ? normalizeTraceText(item.childPlan.node.name) : null,
       serviceName: item.childPlan.streamingService?.name

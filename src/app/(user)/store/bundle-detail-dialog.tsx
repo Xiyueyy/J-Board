@@ -100,8 +100,8 @@ export function BundleDetailDialog({ open, onOpenChange, plan }: Props) {
                       </p>
                       <p className="mt-1 text-xs leading-5 text-muted-foreground">
                         {item.type === "PROXY"
-                          ? `${item.nodeName ?? "优选节点"} · ${item.inboundName ?? "优选线路"} · ${item.trafficGb ?? 0} GB`
-                          : `${item.serviceName ?? "精选流媒体"} · ${item.durationDays} 天`}
+                          ? `${item.nodeName ?? "优选节点"} · ${item.inboundName ?? "优选线路"} · ${item.trafficGb ?? 0} GB · ${plan.durationDays} 天`
+                          : `${item.serviceName ?? "精选流媒体"} · ${plan.durationDays} 天`}
                       </p>
                     </div>
                     <span className="shrink-0 rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
