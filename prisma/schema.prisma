@@ -450,8 +450,29 @@ model NodeServer {
   latencies   NodeLatency[]
   latencyLogs NodeLatencyLog[]
   systemMetric NodeSystemMetric?
+  agentCommands NodeAgentCommand[]
 }
 
+
+
+model NodeAgentCommand {
+  id          String   @id @default(cuid())
+  nodeId      String
+  type        String
+  status      String   @default("PENDING")
+  payload     Json?
+  message     String?
+  attempts    Int      @default(0)
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  node NodeServer @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@index([nodeId, status, createdAt])
+  @@index([type, status, createdAt])
+}
 
 model NodeSystemMetric {
   id            String   @id @default(cuid())

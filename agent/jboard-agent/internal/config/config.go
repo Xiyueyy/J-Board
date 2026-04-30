@@ -12,10 +12,11 @@ type Config struct {
 	ServerURL string
 	AuthToken string
 
-	LatencyInterval   time.Duration
-	TraceInterval     time.Duration
-	NetSpeedInterval  time.Duration
-	NetSpeedInterface string
+	LatencyInterval      time.Duration
+	TraceInterval        time.Duration
+	NetSpeedInterval     time.Duration
+	NetSpeedInterface    string
+	AgentCommandInterval time.Duration
 
 	XrayAccessLogPath string
 	XrayLogStateFile  string
@@ -25,16 +26,17 @@ type Config struct {
 
 func Load() *Config {
 	cfg := &Config{
-		ServerURL:         envOrDefault("SERVER_URL", ""),
-		AuthToken:         envOrDefault("AUTH_TOKEN", ""),
-		LatencyInterval:   envDuration("LATENCY_INTERVAL", 5*time.Minute),
-		TraceInterval:     envDuration("TRACE_INTERVAL", 30*time.Minute),
-		NetSpeedInterval:  envDuration("NET_SPEED_INTERVAL", 3*time.Second),
-		NetSpeedInterface: envOrDefault("NET_SPEED_INTERFACE", ""),
-		XrayAccessLogPath: envOrDefault("XRAY_ACCESS_LOG_PATH", ""),
-		XrayLogStateFile:  envOrDefault("XRAY_LOG_STATE_FILE", "/var/lib/jboard-agent/xray-log-state.json"),
-		XrayLogInterval:   envDuration("XRAY_LOG_INTERVAL", time.Minute),
-		XrayLogStartAtEnd: envBool("XRAY_LOG_START_AT_END", true),
+		ServerURL:            envOrDefault("SERVER_URL", ""),
+		AuthToken:            envOrDefault("AUTH_TOKEN", ""),
+		LatencyInterval:      envDuration("LATENCY_INTERVAL", 5*time.Minute),
+		TraceInterval:        envDuration("TRACE_INTERVAL", 30*time.Minute),
+		NetSpeedInterval:     envDuration("NET_SPEED_INTERVAL", 3*time.Second),
+		NetSpeedInterface:    envOrDefault("NET_SPEED_INTERFACE", ""),
+		AgentCommandInterval: envDuration("AGENT_COMMAND_INTERVAL", 30*time.Second),
+		XrayAccessLogPath:    envOrDefault("XRAY_ACCESS_LOG_PATH", ""),
+		XrayLogStateFile:     envOrDefault("XRAY_LOG_STATE_FILE", "/var/lib/jboard-agent/xray-log-state.json"),
+		XrayLogInterval:      envDuration("XRAY_LOG_INTERVAL", time.Minute),
+		XrayLogStartAtEnd:    envBool("XRAY_LOG_START_AT_END", true),
 	}
 
 	if cfg.ServerURL == "" || cfg.AuthToken == "" {

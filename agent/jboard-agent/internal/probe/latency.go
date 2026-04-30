@@ -13,15 +13,19 @@ import (
 	"github.com/jboard/jboard-agent/internal/config"
 )
 
-// Three-carrier TCP ping targets (Chinese ISP backbone nodes)
+// Jiangxi and Shanghai three-carrier TCP ping targets (Chinese ISP backbone nodes).
+// Carrier ids are region-prefixed to keep Jiangxi and Shanghai measurements separate.
 var latencyTargets = []struct {
 	Carrier string
 	Host    string
 	Port    string
 }{
-	{"mobile", "js-cm-v4.ip.zstaticcdn.com", "80"},
-	{"unicom", "js-cu-v4.ip.zstaticcdn.com", "80"},
-	{"telecom", "js-ct-v4.ip.zstaticcdn.com", "80"},
+	{"jx_telecom", "jx-ct-v4.ip.zstaticcdn.com", "80"},
+	{"jx_unicom", "jx-cu-v4.ip.zstaticcdn.com", "80"},
+	{"jx_mobile", "jx-cm-v4.ip.zstaticcdn.com", "80"},
+	{"sh_telecom", "sh-ct-v4.ip.zstaticcdn.com", "80"},
+	{"sh_unicom", "sh-cu-v4.ip.zstaticcdn.com", "80"},
+	{"sh_mobile", "sh-cm-v4.ip.zstaticcdn.com", "80"},
 }
 
 type latencyEntry struct {

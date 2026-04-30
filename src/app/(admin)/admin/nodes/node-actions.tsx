@@ -17,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { deleteNode, generateAgentToken, revokeAgentToken, testNodeConnection } from "@/actions/admin/nodes";
+import { deleteNode, generateAgentToken, requestAgentUpgrade, revokeAgentToken, testNodeConnection } from "@/actions/admin/nodes";
 import { getErrorMessage } from "@/lib/errors";
 import { toast } from "sonner";
 
@@ -83,6 +83,20 @@ export function NodeActions({ node, siteUrl }: { node: NodeActionValue; siteUrl:
           <DropdownMenuItem onClick={handleGenerateToken}>
             {hasToken ? "重新生成探测 Token" : "生成探测 Token"}
           </DropdownMenuItem>
+          {hasToken && (
+            <DropdownMenuItem
+              onClick={async () => {
+                try {
+                  const res = await requestAgentUpgrade(node.id);
+                  toast.success(res.message);
+                } catch (error) {
+                  toast.error(getErrorMessage(error, "下发 Agent 更新失败"));
+                }
+              }}
+            >
+              一键更新 Agent
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 

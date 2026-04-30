@@ -260,6 +260,60 @@ export async function generateAgentToken(nodeId: string) {
   return plainToken;
 }
 
+export async function requestAgentUpgrade(nodeId: string) {
+  const session = await requireAdmin();
+  const node = await prisma.nodeServer.findUniqueOrThrow({
+    where: { id: nodeId },
+    select: { id: true, name: true, agentToken: true },
+  });
+
+  if (!node.agentToken) {
+    throw new Error("这个节点还没有探测 Token，请先生成并安装 Agent");
+  }
+
+  const recentSince = new Date(Date.now() - 30 * 60 * 1000);
+  const existing = await prisma.nodeAgentCommand.findFirst({
+    where: {
+      nodeId,
+      type: "UPGRADE_AGENT",
+      status: { in: ["PENDING", "RUNNING"] },
+      createdAt: { gte: recentSince },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (existing) {
+    return {
+      success: true,
+      message: existing.status === "PENDING"
+        ? "已有 Agent 更新指令在等待节点拉取，请稍等。"
+        : "Agent 正在执行更新，请稍后查看节点日志。",
+    };
+  }
+
+  await prisma.nodeAgentCommand.create({
+    data: {
+      nodeId,
+      type: "UPGRADE_AGENT",
+      payload: {
+        scriptUrl: "https://raw.githubusercontent.com/Xiyueyy/J-Board/main/scripts/upgrade-jboard-agent.sh",
+      },
+    },
+  });
+
+  await recordAuditLog({
+    actor: actorFromSession(session),
+    action: "node.agent.upgrade.request",
+    targetType: "NodeServer",
+    targetId: node.id,
+    targetLabel: node.name,
+    message: `向节点 ${node.name} 下发 Agent 更新指令`,
+  });
+
+  revalidatePath("/admin/nodes");
+  return { success: true, message: "Agent 更新指令已下发，在线 Agent 会在 30 秒内拉取并执行。" };
+}
+
 export async function revokeAgentToken(nodeId: string) {
   const session = await requireAdmin();
   const node = await prisma.nodeServer.findUniqueOrThrow({

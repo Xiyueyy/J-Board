@@ -12,7 +12,7 @@ import (
 	"github.com/jboard/jboard-agent/internal/probe"
 )
 
-const version = "3.0.5"
+const version = "3.0.6"
 
 func main() {
 	debug.SetGCPercent(50)
@@ -27,6 +27,7 @@ func main() {
 	go probe.TraceLoop(ctx, cfg)
 	go probe.XrayAccessLogLoop(ctx, cfg)
 	go probe.NetSpeedLoop(ctx, cfg)
+	go probe.CommandLoop(ctx, cfg)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)

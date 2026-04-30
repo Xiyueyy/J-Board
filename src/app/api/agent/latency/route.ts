@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgent, isAuthError } from "@/lib/agent-auth";
+import { RECOMMENDATION_CARRIERS } from "@/services/latency-recommendation-types";
 
 /**
  * POST /api/agent/latency
- * Probe agent pushes three-carrier TCP ping latency results.
- * Body: { latencies: [{ carrier: "telecom"|"unicom"|"mobile", latencyMs: number }] }
+ * Probe agent pushes Jiangxi/Shanghai carrier TCP ping latency results.
+ * Body: { latencies: [{ carrier: "jx_telecom"|"jx_unicom"|"jx_mobile"|"sh_telecom"|"sh_unicom"|"sh_mobile", latencyMs: number }] }
  */
 export async function POST(req: Request) {
   const auth = await authenticateAgent(req);
@@ -26,7 +27,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "缺少延迟数据：latencies 必须是非空数组" }, { status: 400 });
   }
 
-  const validCarriers = new Set(["telecom", "unicom", "mobile"]);
+  const validCarriers = new Set<string>(RECOMMENDATION_CARRIERS);
 
   for (const entry of body.latencies) {
     if (!validCarriers.has(entry.carrier)) continue;

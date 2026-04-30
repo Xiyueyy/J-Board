@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { RECOMMENDATION_CARRIERS } from "@/services/latency-recommendation-types";
 
 const RANGES: Record<string, { ms: number; bucketMs: number }> = {
   "1d": { ms: 24 * 60 * 60 * 1000, bucketMs: 5 * 60 * 1000 },
@@ -23,7 +24,7 @@ export async function GET(req: Request) {
   const since = new Date(Date.now() - ms);
 
   const logs = await prisma.nodeLatencyLog.findMany({
-    where: { nodeId, checkedAt: { gte: since } },
+    where: { nodeId, carrier: { in: [...RECOMMENDATION_CARRIERS] }, checkedAt: { gte: since } },
     orderBy: { checkedAt: "asc" },
     select: { carrier: true, latencyMs: true, checkedAt: true },
   });
@@ -51,7 +52,7 @@ export async function GET(req: Request) {
   }
 
   const sortedBuckets = [...buckets.keys()].sort((a, b) => a - b);
-  const carrierList = [...carriers].sort();
+  const carrierList = [...RECOMMENDATION_CARRIERS].filter((carrier) => carriers.has(carrier));
 
   const points = sortedBuckets.map((bucket) => {
     const carrierMap = buckets.get(bucket)!;

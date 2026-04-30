@@ -32,6 +32,12 @@ interface HistoryData {
 
 const RANGE_LABELS: Record<Range, string> = { "1d": "1 天", "7d": "7 天", "30d": "30 天" };
 const CARRIER_COLORS: Record<string, string> = {
+  jx_telecom: "oklch(0.55 0.15 250)",
+  jx_unicom: "oklch(0.55 0.15 145)",
+  jx_mobile: "oklch(0.55 0.15 30)",
+  sh_telecom: "oklch(0.62 0.16 250)",
+  sh_unicom: "oklch(0.62 0.16 145)",
+  sh_mobile: "oklch(0.62 0.16 30)",
   telecom: "oklch(0.55 0.15 250)",
   unicom: "oklch(0.55 0.15 145)",
   mobile: "oklch(0.55 0.15 30)",

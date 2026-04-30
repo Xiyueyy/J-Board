@@ -76,11 +76,11 @@ export function StoreLatencyRecommendations({
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="max-w-2xl space-y-2">
           <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-            <Sparkles className="size-3.5" /> 三网推荐
+            <Sparkles className="size-3.5" /> 江西 / 上海三网推荐
           </div>
-          <h2 className="text-xl font-semibold tracking-[-0.04em] sm:text-2xl">按最低延迟优先选节点</h2>
+          <h2 className="text-xl font-semibold tracking-[-0.04em] sm:text-2xl">按江西 / 上海最低延迟优先选节点</h2>
           <p className="text-sm leading-6 text-muted-foreground text-pretty">
-            自动比较电信、联通、移动三条线路当前最低延迟，推荐会每 5 分钟刷新一次。
+            自动比较江西、上海两地三网当前最低延迟，推荐会每 5 分钟刷新一次。
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-muted-foreground">
@@ -92,7 +92,7 @@ export function StoreLatencyRecommendations({
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 md:grid-cols-3">
+      <div className="mt-5 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
         {RECOMMENDATION_CARRIERS.map((carrier) => {
           const item = itemMap.get(carrier);
           return (
@@ -128,7 +128,7 @@ export function StoreLatencyRecommendations({
                   </Link>
                 </div>
               ) : (
-                <p className="mt-4 text-sm leading-6 text-muted-foreground">正在采集这个运营商的延迟数据。</p>
+                <p className="mt-4 text-sm leading-6 text-muted-foreground">正在采集这个探测点的延迟数据。</p>
               )}
             </div>
           );

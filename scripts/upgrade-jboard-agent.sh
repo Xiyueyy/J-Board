@@ -12,6 +12,7 @@ XRAY_LOG_STATE_FILE="${XRAY_LOG_STATE_FILE:-/var/lib/jboard-agent/xray-log-state
 XRAY_LOG_START_AT_END="${XRAY_LOG_START_AT_END:-1}"
 NET_SPEED_INTERVAL="${NET_SPEED_INTERVAL:-3s}"
 NET_SPEED_INTERFACE="${NET_SPEED_INTERFACE:-}"
+AGENT_COMMAND_INTERVAL="${AGENT_COMMAND_INTERVAL:-30s}"
 BUILD_FROM_SOURCE="${BUILD_FROM_SOURCE:-0}"
 AGENT_REF="${AGENT_REF:-main}"
 AGENT_BINARY_BASE_URL="${AGENT_BINARY_BASE_URL:-https://raw.githubusercontent.com/${GH_REPO}/${AGENT_REF}/agent/jboard-agent/dist}"
@@ -385,6 +386,7 @@ fi
 echo "[7/7] Writing service and starting..."
 upsert_env_value NET_SPEED_INTERVAL "$NET_SPEED_INTERVAL"
 upsert_env_value NET_SPEED_INTERFACE "$NET_SPEED_INTERFACE"
+upsert_env_value AGENT_COMMAND_INTERVAL "$AGENT_COMMAND_INTERVAL"
 write_systemd_service
 run_as_root systemctl daemon-reload
 run_as_root systemctl enable "$SERVICE_NAME"

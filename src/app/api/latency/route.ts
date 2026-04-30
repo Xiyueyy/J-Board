@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { RECOMMENDATION_CARRIERS } from "@/services/latency-recommendation-types";
 
 const MAX_NODE_IDS = 100;
 
@@ -13,7 +14,7 @@ export async function GET(req: Request) {
   }
 
   const latencies = await prisma.nodeLatency.findMany({
-    where: { nodeId: { in: nodeIds } },
+    where: { nodeId: { in: nodeIds }, carrier: { in: [...RECOMMENDATION_CARRIERS] } },
     orderBy: { checkedAt: "desc" },
   });
 

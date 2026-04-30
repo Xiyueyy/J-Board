@@ -4,18 +4,11 @@ import { Activity, Clock3, RefreshCw, Route } from "lucide-react";
 import { useLatencyRefreshMeta, type LatencyItem } from "./latency-loader";
 import type { TraceItem } from "./trace-loader";
 import { cn } from "@/lib/utils";
-
-const carrierLabels: Record<string, string> = {
-  telecom: "电信",
-  unicom: "联通",
-  mobile: "移动",
-};
-
-const CARRIER_ORDER: string[] = ["telecom", "unicom", "mobile"];
+import { carrierLabels, latencyCarrierOrder } from "@/services/latency-recommendation-types";
 
 function sortByCarrier<T extends { carrier: string }>(items: T[]): T[] {
   return [...items].sort(
-    (a, b) => (CARRIER_ORDER.indexOf(a.carrier) >>> 0) - (CARRIER_ORDER.indexOf(b.carrier) >>> 0),
+    (a, b) => (latencyCarrierOrder.indexOf(a.carrier) >>> 0) - (latencyCarrierOrder.indexOf(b.carrier) >>> 0),
   );
 }
 
@@ -94,7 +87,7 @@ export function ProxyLatencyGrid({ items, onClick }: { items: LatencyItem[]; onC
       <p className="inline-flex items-center gap-2 text-xs font-semibold tracking-[0.14em] text-muted-foreground">
         <Activity className="size-3.5" /> 延迟{onClick && <span className="font-normal">· 点击查看趋势</span>}
       </p>
-      <div className={cn("grid grid-cols-3 gap-2", onClick && "cursor-pointer")} onClick={onClick}>
+      <div className={cn("grid grid-cols-2 gap-2 sm:grid-cols-3", onClick && "cursor-pointer")} onClick={onClick}>
         {sorted.map((item) => {
           const strong = item.latencyMs === bestLatency;
           return (
