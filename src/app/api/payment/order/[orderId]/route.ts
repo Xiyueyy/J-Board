@@ -24,6 +24,8 @@ export async function GET(
       paymentUrl: true,
       expireAt: true,
       note: true,
+      reviewStatus: true,
+      reviewNote: true,
       amount: true,
     },
   });
@@ -46,6 +48,8 @@ export async function GET(
         paymentUrl: true,
         expireAt: true,
         note: true,
+        reviewStatus: true,
+        reviewNote: true,
         amount: true,
       },
     });
@@ -59,5 +63,7 @@ export async function GET(
     paymentUrl: snapshot.paymentUrl,
     expireAt: snapshot.expireAt?.toISOString() ?? null,
     note: snapshot.note,
+    reviewStatus: snapshot.reviewStatus,
+    reviewNote: snapshot.reviewNote,
   });
 }

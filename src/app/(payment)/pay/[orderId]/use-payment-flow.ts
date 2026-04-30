@@ -14,6 +14,7 @@ import type {
 
 const orderStatusLabel: Record<PaymentQueryResult["status"], string> = {
   pending: "等待支付确认",
+  reviewing: "已提交付款审核，等待管理员确认",
   paid: "支付成功",
   cancelled: "订单已取消",
   refunded: "订单已退款",
@@ -33,6 +34,7 @@ interface CreatePaymentOptions {
   redirectToGateway?: boolean;
   silent?: boolean;
   channel?: string;
+  nextStatus?: PaymentPageStatus;
 }
 
 export function usePaymentFlow(orderId: string) {
@@ -41,6 +43,7 @@ export function usePaymentFlow(orderId: string) {
   const [payment, setPayment] = useState<PaymentInfo | null>(null);
   const [status, setStatus] = useState<PaymentPageStatus>("booting");
   const [pageError, setPageError] = useState<string | null>(null);
+  const [manualConfirming, setManualConfirming] = useState(false);
 
   const selectedProvider = useMemo(
     () => (selectedIdx >= 0 ? providers[selectedIdx] : null),
@@ -62,7 +65,7 @@ export function usePaymentFlow(orderId: string) {
       });
 
       setPayment(data);
-      setStatus("waiting");
+      setStatus(options?.nextStatus ?? "waiting");
 
       if (
         data.paymentUrl
@@ -134,6 +137,9 @@ export function usePaymentFlow(orderId: string) {
         redirectToGateway: false,
         silent: true,
         channel: providerList[defaultIdx]?.channel,
+        nextStatus: order.paymentMethod === "manual_qr" && order.reviewStatus === "FLAGGED"
+          ? "reviewing"
+          : "waiting",
       });
     } catch (error) {
       setPageError(getErrorMessage(error, "加载支付信息失败"));
@@ -159,6 +165,12 @@ export function usePaymentFlow(orderId: string) {
         return;
       }
 
+      if (result.status === "reviewing") {
+        setPageError(null);
+        setStatus("reviewing");
+        return;
+      }
+
       setStatus("idle");
       setPageError(
         result.error || `订单状态更新：${orderStatusLabel[result.status] ?? result.status}`,
@@ -178,7 +190,7 @@ export function usePaymentFlow(orderId: string) {
   }, [orderId]);
 
   useEffect(() => {
-    if (status !== "waiting" || !payment?.tradeNo) return;
+    if (status !== "waiting" || !payment?.tradeNo || selectedProvider?.provider === "manual_qr") return;
 
     const initialTimer = window.setTimeout(() => {
       void pollPaymentStatus();
@@ -191,6 +203,17 @@ export function usePaymentFlow(orderId: string) {
       window.clearTimeout(initialTimer);
       clearInterval(interval);
     };
+  }, [payment?.tradeNo, selectedProvider?.provider, status]);
+
+
+  useEffect(() => {
+    if (status !== "reviewing" || !payment?.tradeNo) return;
+
+    const interval = setInterval(() => {
+      void pollPaymentStatus();
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, [payment?.tradeNo, status]);
 
   function startSelectedPayment() {
@@ -205,6 +228,7 @@ export function usePaymentFlow(orderId: string) {
     setPayment(null);
     setStatus("idle");
     setPageError(null);
+    setManualConfirming(false);
     setSelectedIdx(providers.length === 1 ? 0 : -1);
   }
 
@@ -212,7 +236,41 @@ export function usePaymentFlow(orderId: string) {
     await cancelOwnPendingOrder(orderId);
     setPayment(null);
     setStatus("idle");
+    setManualConfirming(false);
     setPageError("订单已取消。你可以回到商店重新选择。");
+  }
+
+  async function confirmManualPayment() {
+    if (!payment || selectedProvider?.provider !== "manual_qr") return;
+
+    setPageError(null);
+    setManualConfirming(true);
+    try {
+      const result = await fetchJson<PaymentQueryResult>("/api/payment/manual-confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId }),
+      });
+
+      if (result.status === "paid") {
+        setStatus("paid");
+        return;
+      }
+
+      if (result.status === "reviewing") {
+        setStatus("reviewing");
+        setPageError(null);
+        return;
+      }
+
+      setPageError(
+        result.error || `订单状态更新：${orderStatusLabel[result.status] ?? result.status}`,
+      );
+    } catch (error) {
+      setPageError(getErrorMessage(error, "确认付款失败"));
+    } finally {
+      setManualConfirming(false);
+    }
   }
 
   return {
@@ -223,7 +281,9 @@ export function usePaymentFlow(orderId: string) {
     payment,
     status,
     pageError,
+    manualConfirming,
     startSelectedPayment,
+    confirmManualPayment,
     resetPaymentChoice,
     cancelOrder,
   };

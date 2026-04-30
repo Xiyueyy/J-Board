@@ -10,13 +10,16 @@ export async function confirmOrder(orderId: string) {
   const session = await requireAdmin();
   const order = await prisma.order.findUniqueOrThrow({
     where: { id: orderId },
-    select: { status: true, id: true },
+    select: { status: true, id: true, paymentMethod: true },
   });
   if (order.status !== "PENDING") {
     throw new Error("订单状态不正确");
   }
 
-  const result = await confirmPendingOrder(orderId);
+  const result = await confirmPendingOrder(
+    orderId,
+    order.paymentMethod === "manual_qr" ? "manual_qr:admin_confirmed" : undefined,
+  );
   if (result.finalStatus !== "PAID") {
     throw new Error(result.errorMessage ?? "订单处理失败");
   }

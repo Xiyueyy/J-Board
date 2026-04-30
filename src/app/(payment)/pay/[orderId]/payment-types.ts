@@ -14,6 +14,9 @@ export interface PaymentInfo {
     cnyAmount?: string;
     exchangeRate?: number;
     network?: string;
+    qrCodeImage?: string;
+    instructions?: string;
+    subject?: string;
   };
 }
 
@@ -25,11 +28,13 @@ export interface OrderPaymentSnapshot {
   paymentUrl: string | null;
   expireAt: string | null;
   note: string | null;
+  reviewStatus: "NORMAL" | "FLAGGED" | "RESOLVED";
+  reviewNote: string | null;
 }
 
 export interface PaymentQueryResult {
-  status: "pending" | "paid" | "cancelled" | "refunded" | "processing_failed";
+  status: "pending" | "reviewing" | "paid" | "cancelled" | "refunded" | "processing_failed";
   error?: string;
 }
 
-export type PaymentPageStatus = "booting" | "idle" | "creating" | "waiting" | "paid";
+export type PaymentPageStatus = "booting" | "idle" | "creating" | "waiting" | "reviewing" | "paid";

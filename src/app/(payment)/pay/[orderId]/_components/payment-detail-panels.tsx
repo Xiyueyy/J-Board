@@ -1,7 +1,9 @@
 "use client";
 
 import { QRCodeSVG } from "qrcode.react";
+import { CheckCircle2 } from "lucide-react";
 import { CopyButton } from "@/components/shared/copy-button";
+import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/shared/status-badge";
 import type { PaymentInfo } from "../payment-types";
 
@@ -55,6 +57,66 @@ export function UsdtView({ raw }: { raw: NonNullable<PaymentInfo["raw"]> }) {
           <QRCodeSVG value={raw.walletAddress || ""} size={220} />
         </div>
       </div>
+    </div>
+  );
+}
+
+
+export function ManualQrView({
+  raw,
+  confirming,
+  submitted,
+  onConfirm,
+}: {
+  raw: NonNullable<PaymentInfo["raw"]>;
+  confirming?: boolean;
+  submitted?: boolean;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="space-y-5">
+      <div className="rounded-xl border border-primary/15 bg-primary/10 p-4 text-center">
+        <p className="text-xs font-medium tracking-wide text-primary/75">扫码付款</p>
+        <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-primary tabular-nums">
+          {raw.cnyAmount ? `¥${raw.cnyAmount}` : "按订单金额付款"}
+        </p>
+        {raw.subject && (
+          <p className="mt-1 text-xs text-muted-foreground">{raw.subject}</p>
+        )}
+      </div>
+
+      <div className="flex justify-center">
+        <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={raw.qrCodeImage} alt="收款码" className="size-64 max-w-full rounded-xl object-contain" />
+        </div>
+      </div>
+
+      <div className="space-y-3 rounded-xl border border-border bg-muted/25 p-4 text-sm leading-6 text-muted-foreground">
+        <p className="font-medium text-foreground">付款说明</p>
+        <p className="whitespace-pre-line">
+          {raw.instructions || "请扫码完成付款，付款后点击“我已付款”。管理员确认到账后会为你开通。"}
+        </p>
+      </div>
+
+      {submitted ? (
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-center text-sm text-amber-700 dark:text-amber-300">
+          <p className="font-semibold">已提交付款审核</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            管理员已收到通知，确认到账后会在后台为你开通。
+          </p>
+        </div>
+      ) : (
+        <>
+          <Button type="button" size="lg" className="w-full" disabled={confirming} onClick={onConfirm}>
+            <CheckCircle2 className="size-4" />
+            {confirming ? "正在提交审核..." : "我已付款"}
+          </Button>
+          <p className="text-center text-xs leading-5 text-muted-foreground">
+            点击后订单会进入待审核，管理员确认到账后才会开通。
+          </p>
+        </>
+      )}
     </div>
   );
 }

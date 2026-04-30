@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Coins, CreditCard } from "lucide-react";
+import { CheckCircle2, Coins, CreditCard, QrCode } from "lucide-react";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -42,12 +42,22 @@ export function PaymentMethodSelector({
             >
               <div className="flex items-center gap-3">
                 <div className={cn("flex size-9 items-center justify-center rounded-lg transition-colors duration-200", selected ? "bg-primary text-primary-foreground" : "bg-muted text-primary")}>
-                  {provider.provider === "usdt_trc20" ? <Coins className="size-5" /> : <CreditCard className="size-5" />}
+                  {provider.provider === "usdt_trc20" ? (
+                    <Coins className="size-5" />
+                  ) : provider.provider === "manual_qr" ? (
+                    <QrCode className="size-5" />
+                  ) : (
+                    <CreditCard className="size-5" />
+                  )}
                 </div>
                 <div>
                   <span className="font-semibold">{provider.name}</span>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {provider.provider === "usdt_trc20" ? "适合使用稳定币付款" : "根据页面提示完成确认"}
+                    {provider.provider === "usdt_trc20"
+                      ? "适合使用稳定币付款"
+                      : provider.provider === "manual_qr"
+                        ? "扫码后点击我已付款即可开通"
+                        : "根据页面提示完成确认"}
                   </p>
                 </div>
               </div>

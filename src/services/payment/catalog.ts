@@ -6,7 +6,7 @@ export interface PaymentConfigField {
   label: string;
   placeholder?: string;
   secret?: boolean;
-  type?: "text" | "checkboxes";
+  type?: "text" | "textarea" | "checkboxes" | "image";
   options?: { value: string; label: string }[];
 }
 
@@ -46,10 +46,21 @@ const usdtTrc20Schema = z.object({
     .transform((value) => value ?? ""),
 });
 
+const manualQrSchema = z.object({
+  displayName: displayNameField,
+  qrCodeImage: z.string().trim().min(1, "请上传收款码图片"),
+  instructions: z.string().trim().optional().transform((v) => v ?? ""),
+  barkUrl: z
+    .union([z.url("Bark 推送地址格式不正确"), z.literal("")])
+    .optional()
+    .transform((value) => value ?? ""),
+});
+
 const paymentConfigSchemas = {
   epay: epaySchema,
   alipay_f2f: alipayF2fSchema,
   usdt_trc20: usdtTrc20Schema,
+  manual_qr: manualQrSchema,
 } as const;
 
 export const PAYMENT_PROVIDER_DEFINITIONS: PaymentProviderDefinition[] = [
@@ -95,6 +106,17 @@ export const PAYMENT_PROVIDER_DEFINITIONS: PaymentProviderDefinition[] = [
       { key: "exchangeRate", label: "汇率 (1 USDT = ¥?)", placeholder: "7.2" },
       { key: "tronApiKey", label: "TronGrid API Key", placeholder: "免费注册: trongrid.io", secret: true },
       { key: "tronApiUrl", label: "Tron API (可选)", placeholder: "https://api.trongrid.io" },
+    ],
+  },
+  {
+    id: "manual_qr",
+    name: "收款码付款审核",
+    description: "上传你自己的收款码。用户扫码后点击“我已付款”会进入待审核，并通过自定义 Bark 地址推送提醒管理员确认到账。",
+    fields: [
+      { key: "displayName", label: "用户端显示名称", placeholder: "例如：扫码支付" },
+      { key: "qrCodeImage", label: "收款码图片", type: "image" },
+      { key: "instructions", label: "付款说明", type: "textarea", placeholder: "例如：请备注订单号，付款后点击我已付款" },
+      { key: "barkUrl", label: "Bark 推送地址", placeholder: "https://api.day.app/你的Key 或 https://你的Bark域名/你的Key", secret: true },
     ],
   },
 ];

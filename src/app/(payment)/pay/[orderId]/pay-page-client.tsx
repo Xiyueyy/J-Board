@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { ConfirmActionButton } from "@/components/shared/confirm-action-button";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { PaymentMethodSelector } from "./_components/payment-method-selector";
-import { AlipayQrView, UsdtView } from "./_components/payment-detail-panels";
+import { AlipayQrView, ManualQrView, UsdtView } from "./_components/payment-detail-panels";
 import { PaymentCard, PaymentFrame } from "./_components/payment-frame";
 import { PaymentSuccessCard } from "./_components/payment-success-card";
 import { usePaymentFlow } from "./use-payment-flow";
@@ -22,7 +22,9 @@ export function PayPageClient({ orderId }: { orderId: string }) {
     payment,
     status,
     pageError,
+    manualConfirming,
     startSelectedPayment,
+    confirmManualPayment,
     resetPaymentChoice,
     cancelOrder,
   } = usePaymentFlow(orderId);
@@ -71,14 +73,29 @@ export function PayPageClient({ orderId }: { orderId: string }) {
           <UsdtView raw={payment.raw} />
         )}
 
-        {payment && status === "waiting" && (
+        {payment && selectedProvider?.provider === "manual_qr" && payment.raw && (
+          <ManualQrView
+            raw={payment.raw}
+            confirming={manualConfirming}
+            submitted={status === "reviewing"}
+            onConfirm={confirmManualPayment}
+          />
+        )}
+
+        {payment && status === "waiting" && selectedProvider?.provider !== "manual_qr" && (
           <div className="space-y-3 rounded-lg border border-primary/15 bg-primary/10 px-4 py-3 text-center text-sm text-primary">
             <p className="animate-pulse font-semibold">正在等待支付结果返回</p>
             <p className="text-xs leading-5 text-muted-foreground">你可以保持页面打开；如果想换一种方式支付，请先重选支付方式。</p>
           </div>
         )}
 
-        {status !== "booting" && (
+        {status === "reviewing" && (
+          <Link href="/dashboard" className={buttonVariants({ size: "lg", variant: "outline", className: "w-full" })}>
+            返回仪表盘
+          </Link>
+        )}
+
+        {status !== "booting" && status !== "reviewing" && (
           <div className="grid gap-2 sm:grid-cols-2">
             {payment ? (
               <Button

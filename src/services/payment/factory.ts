@@ -3,6 +3,7 @@ import type { PaymentAdapter } from "./adapter";
 import { EasyPayAdapter, type EasyPayConfig } from "./epay";
 import { AlipayF2FAdapter, type AlipayF2FConfig } from "./alipay-f2f";
 import { UsdtTrc20Adapter, type UsdtTrc20Config } from "./usdt-trc20";
+import { ManualQrAdapter, type ManualQrConfig } from "./manual-qr";
 import {
   decryptPaymentConfigForUse,
   getPaymentProviderName,
@@ -33,6 +34,8 @@ export async function getPaymentAdapter(provider: string): Promise<PaymentAdapte
       return new AlipayF2FAdapter(cfg as AlipayF2FConfig);
     case "usdt_trc20":
       return new UsdtTrc20Adapter(cfg as UsdtTrc20Config);
+    case "manual_qr":
+      return new ManualQrAdapter(cfg as ManualQrConfig);
     default:
       throw new Error(`Unknown payment provider: ${provider}`);
   }

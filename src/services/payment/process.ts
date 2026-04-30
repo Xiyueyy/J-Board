@@ -36,6 +36,9 @@ async function processOrderPaymentById(
           status: "PAID",
           note: null,
           ...(paymentRef !== undefined ? { paymentRef } : {}),
+          ...(paymentRef?.startsWith("manual_qr:")
+            ? { reviewStatus: "RESOLVED" as const, reviewNote: "收款码付款已确认到账并开通" }
+            : {}),
         },
       });
 
@@ -164,6 +167,6 @@ export async function handleVerifiedPaymentSuccess(
   return processOrderPaymentById(order.id, paymentRef);
 }
 
-export async function confirmPendingOrder(orderId: string) {
-  return processOrderPaymentById(orderId);
+export async function confirmPendingOrder(orderId: string, paymentRef?: string) {
+  return processOrderPaymentById(orderId, paymentRef);
 }

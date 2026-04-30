@@ -22,6 +22,7 @@ export async function GET(
       paymentMethod: true,
       createdAt: true,
       note: true,
+      reviewStatus: true,
     },
   });
 
@@ -35,6 +36,10 @@ export async function GET(
 
   if (order.status !== "PENDING" || !order.paymentMethod) {
     return jsonOk({ status: order.status.toLowerCase() });
+  }
+
+  if (order.paymentMethod === "manual_qr" && order.reviewStatus === "FLAGGED") {
+    return jsonOk({ status: "reviewing" });
   }
 
   if (order.note?.startsWith("Provision failed: ")) {
