@@ -110,8 +110,11 @@ systemctl restart jboard-agent
 
 ## Xray access log
 
-安装/升级脚本会优先查找这些路径：
+安装/升级脚本和 Agent 自动探测会优先查找这些路径：
 
+- `/docker/3xui/logs/access.log`
+- `/docker/3x-ui/logs/access.log`
+- `/docker/x-ui/logs/access.log`
 - `/usr/local/x-ui/access.log`
 - `/usr/local/x-ui/bin/access.log`
 - `/usr/local/x-ui/xray/access.log`
@@ -121,7 +124,7 @@ systemctl restart jboard-agent
 - `/var/log/x-ui/access.log`
 - `/opt/3x-ui/access.log`
 - `/opt/x-ui/access.log`
-- `/usr/local`、`/etc`、`/var/log`、`/opt`、Docker volume 下名称包含 `access.log` 或 `xray` 的日志
+- `/docker`、`/usr/local`、`/etc`、`/var/log`、`/opt`、Docker volume 下名称包含 `access.log` 或 `xray` 的日志
 
 如果没有找到，脚本会提示你在 3x-ui 的 Xray Config 中开启：
 

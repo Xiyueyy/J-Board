@@ -78,12 +78,19 @@ resolve_release_tag() {
 }
 
 detect_xray_access_log() {
-  if [ -n "$XRAY_ACCESS_LOG_PATH" ]; then
+  if [ -n "$XRAY_ACCESS_LOG_PATH" ] && run_as_root_output test -s "$XRAY_ACCESS_LOG_PATH" 2>/dev/null; then
     printf '%s\n' "$XRAY_ACCESS_LOG_PATH"
     return 0
   fi
 
   for candidate in \
+    /docker/3xui/logs/access.log \
+    /docker/3x-ui/logs/access.log \
+    /docker/x-ui/logs/access.log \
+    /docker/3xui/access.log \
+    /docker/3x-ui/access.log \
+    /docker/x-ui/access.log \
+    /docker/3xui/db/access.log \
     /usr/local/x-ui/access.log \
     /usr/local/x-ui/bin/access.log \
     /usr/local/x-ui/xray/access.log \
@@ -99,19 +106,24 @@ detect_xray_access_log() {
     fi
   done
 
-  for root in /usr/local /etc /var/log /opt /var/lib/docker/volumes; do
+  for root in /docker /usr/local /etc /var/log /opt /var/lib/docker/volumes; do
     if ! run_as_root_output test -d "$root" 2>/dev/null; then
       continue
     fi
     while IFS= read -r candidate; do
       case "$candidate" in
-        *x-ui*|*3x-ui*|*xray*|*Xray*)
+        *x-ui*|*3x-ui*|*3xui*|*xray*|*Xray*)
           printf '%s\n' "$candidate"
           return 0
           ;;
       esac
-    done < <(run_as_root_output find "$root" -type f \( -name 'access.log' -o -name '*xray*.log' \) 2>/dev/null | head -n 50)
+    done < <(run_as_root_output find "$root" -type f \( -name 'access.log' -o -name '*xray*.log' \) 2>/dev/null | head -n 80)
   done
+
+  if [ -n "$XRAY_ACCESS_LOG_PATH" ] && run_as_root_output test -f "$XRAY_ACCESS_LOG_PATH" 2>/dev/null; then
+    printf '%s\n' "$XRAY_ACCESS_LOG_PATH"
+    return 0
+  fi
 
   return 1
 }

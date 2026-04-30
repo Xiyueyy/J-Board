@@ -20,6 +20,33 @@ import (
 const maxXrayReadBytes int64 = 2 * 1024 * 1024
 const maxXrayEventsPerPush = 300
 
+var xrayAccessLogCandidates = []string{
+	"/docker/3xui/logs/access.log",
+	"/docker/3x-ui/logs/access.log",
+	"/docker/x-ui/logs/access.log",
+	"/docker/3xui/access.log",
+	"/docker/3x-ui/access.log",
+	"/docker/x-ui/access.log",
+	"/usr/local/x-ui/access.log",
+	"/usr/local/x-ui/bin/access.log",
+	"/usr/local/x-ui/xray/access.log",
+	"/etc/x-ui/access.log",
+	"/etc/x-ui/xray/access.log",
+	"/var/log/xray/access.log",
+	"/var/log/x-ui/access.log",
+	"/opt/3x-ui/access.log",
+	"/opt/x-ui/access.log",
+}
+
+var xrayAccessLogSearchRoots = []string{
+	"/docker",
+	"/usr/local",
+	"/etc",
+	"/var/log",
+	"/opt",
+	"/var/lib/docker/volumes",
+}
+
 var xrayAccessLinePattern = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?)\s+(?:from\s+)?(\S+)\s+(accepted|rejected)\s+(?:(tcp|udp):)?(\S+)\s+\[([^\]]+)\](?:.*?\bemail:\s*([^\s]+))?`)
 
 type xrayLogState struct {
@@ -64,8 +91,13 @@ type accessAggregate struct {
 
 func XrayAccessLogLoop(ctx context.Context, cfg *config.Config) {
 	if strings.TrimSpace(cfg.XrayAccessLogPath) == "" {
-		log.Println("[xray-log] disabled; set XRAY_ACCESS_LOG_PATH to enable node access risk telemetry")
-		return
+		if detected := detectXrayAccessLogPath(); detected != "" {
+			cfg.XrayAccessLogPath = detected
+			log.Printf("[xray-log] auto-detected access log: %s", detected)
+		} else {
+			log.Println("[xray-log] disabled; set XRAY_ACCESS_LOG_PATH to enable node access risk telemetry")
+			return
+		}
 	}
 
 	ticker := time.NewTicker(cfg.XrayLogInterval)
@@ -81,6 +113,71 @@ func XrayAccessLogLoop(ctx context.Context, cfg *config.Config) {
 			collectAndPushXrayLogs(cfg)
 		}
 	}
+}
+
+func detectXrayAccessLogPath() string {
+	for _, candidate := range xrayAccessLogCandidates {
+		if isReadableRegularFile(candidate) {
+			return candidate
+		}
+	}
+
+	for _, root := range xrayAccessLogSearchRoots {
+		info, err := os.Stat(root)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+
+		found := ""
+		_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+			if err != nil || found != "" {
+				return nil
+			}
+			if entry.IsDir() {
+				return nil
+			}
+			if !looksLikeXrayAccessLog(path) {
+				return nil
+			}
+			if isReadableRegularFile(path) {
+				found = path
+				return filepath.SkipAll
+			}
+			return nil
+		})
+		if found != "" {
+			return found
+		}
+	}
+
+	return ""
+}
+
+func isReadableRegularFile(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return false
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	_ = file.Close()
+	return true
+}
+
+func looksLikeXrayAccessLog(path string) bool {
+	lowerPath := strings.ToLower(path)
+	base := strings.ToLower(filepath.Base(path))
+	if base != "access.log" && !(strings.Contains(base, "xray") && strings.HasSuffix(base, ".log")) {
+		return false
+	}
+	for _, marker := range []string{"3xui", "3x-ui", "x-ui", "xray"} {
+		if strings.Contains(lowerPath, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func collectAndPushXrayLogs(cfg *config.Config) {
