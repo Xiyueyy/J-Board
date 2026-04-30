@@ -455,6 +455,10 @@ async function evaluateSubscriptionRisk(input: {
     db: input.db,
   });
 
+  if (!created && event.reviewStatus === "RESOLVED" && event.finalAction === "RESTORE_ACCESS") {
+    return { warned: false, suspended: false, eventId: event.id };
+  }
+
   const targetLabel = created
     ? await getTargetLabel({ userId: input.userId, subscriptionId: input.subscriptionId }, input.db)
     : null;
@@ -593,6 +597,10 @@ export async function evaluateNodeAccessAbuseRisk(input: {
     cityLabels: [],
     db,
   });
+
+  if (!created && event.reviewStatus === "RESOLVED" && event.finalAction === "RESTORE_ACCESS") {
+    return { warned: false, suspended: false, eventId: event.id };
+  }
 
   if (created) {
     const targetLabel = await getTargetLabel({ userId: input.userId, subscriptionId: input.subscriptionId }, db);
