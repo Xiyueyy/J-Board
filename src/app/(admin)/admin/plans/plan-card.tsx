@@ -253,7 +253,11 @@ export function PlanCard({ plan, activeCount, services, bundleCandidates, batchF
             <DetailItem label="打包内容">
               {plan.bundleItems.length > 0
                 ? plan.bundleItems
-                    .map((item) => `${item.childPlan.name}${item.trafficGb ? ` · ${item.trafficGb}GB` : ""}`)
+                    .map((item) => [
+                        item.childPlan.name,
+                        item.selectedInbound?.tag ?? null,
+                        item.trafficGb ? `${item.trafficGb}GB` : null,
+                      ].filter(Boolean).join(" · "))
                     .join(" / ")
                 : "未配置"}
             </DetailItem>

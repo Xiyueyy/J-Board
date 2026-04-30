@@ -109,6 +109,8 @@ async function normalizeBundleItems(items: BundleItemInput[], bundlePlanId?: str
     },
   });
   const planMap = new Map(plans.map((plan) => [plan.id, plan]));
+  const usedProxyInboundKeys = new Set<string>();
+  const usedStreamingPlanIds = new Set<string>();
 
   return items.map((item, index) => {
     const plan = planMap.get(item.planId);
@@ -117,6 +119,10 @@ async function normalizeBundleItems(items: BundleItemInput[], bundlePlanId?: str
     if (plan.type === "BUNDLE") throw new Error("聚合套餐暂不支持嵌套另一个聚合套餐");
 
     if (plan.type === "STREAMING") {
+      if (usedStreamingPlanIds.has(plan.id)) {
+        throw new Error(`${plan.name} 已重复添加`);
+      }
+      usedStreamingPlanIds.add(plan.id);
       return {
         childPlanId: plan.id,
         selectedInboundId: null,
@@ -133,9 +139,15 @@ async function normalizeBundleItems(items: BundleItemInput[], bundlePlanId?: str
     }
 
     const selectedInboundId = item.selectedInboundId || selectableInbounds[0].id;
-    if (!selectableInbounds.some((inbound) => inbound.id === selectedInboundId)) {
+    const selectedInbound = selectableInbounds.find((inbound) => inbound.id === selectedInboundId);
+    if (!selectedInbound) {
       throw new Error(`${plan.name} 的入站无效，请重新选择`);
     }
+    const duplicateKey = `${plan.id}:${selectedInboundId}`;
+    if (usedProxyInboundKeys.has(duplicateKey)) {
+      throw new Error(`${plan.name} 的入站 ${selectedInbound.tag} 已重复添加`);
+    }
+    usedProxyInboundKeys.add(duplicateKey);
 
     const trafficGb = plan.pricingMode === "FIXED_PACKAGE"
       ? plan.fixedTrafficGb

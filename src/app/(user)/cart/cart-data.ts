@@ -24,6 +24,7 @@ export async function getCartPageData(userId: string) {
             bundleItems: {
               include: {
                 childPlan: true,
+                selectedInbound: true,
               },
               orderBy: { sortOrder: "asc" },
             },
@@ -73,7 +74,12 @@ export async function getCartPageData(userId: string) {
       serviceName: item.plan.streamingService?.name ?? null,
       inboundName: getInboundDisplayName(item.selectedInbound),
       bundleSummary: item.plan.type === "BUNDLE"
-        ? item.plan.bundleItems.map((bundleItem) => bundleItem.childPlan.name).join(" / ")
+        ? item.plan.bundleItems
+            .map((bundleItem) => [
+              bundleItem.childPlan.name,
+              bundleItem.selectedInbound ? getInboundDisplayName(bundleItem.selectedInbound) : null,
+            ].filter(Boolean).join(" · "))
+            .join(" / ")
         : null,
     };
   });

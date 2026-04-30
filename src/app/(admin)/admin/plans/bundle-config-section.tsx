@@ -28,11 +28,49 @@ interface Props {
   setBundleItems: Dispatch<SetStateAction<BundlePlanFormItem[]>>;
 }
 
-function defaultItem(candidate: BundlePlanCandidate, sortOrder: number): BundlePlanFormItem {
+function getUsedInboundIds(
+  items: BundlePlanFormItem[],
+  planId: string,
+  excludeIndex?: number,
+) {
+  return new Set(
+    items
+      .filter((item, index) => index !== excludeIndex && item.planId === planId)
+      .map((item) => item.selectedInboundId)
+      .filter((value): value is string => Boolean(value)),
+  );
+}
+
+function canSelectCandidate(
+  candidate: BundlePlanCandidate,
+  items: BundlePlanFormItem[],
+  excludeIndex?: number,
+) {
+  if (candidate.type === "STREAMING") {
+    return !items.some((item, index) => index !== excludeIndex && item.planId === candidate.id);
+  }
+
+  const usedInboundIds = getUsedInboundIds(items, candidate.id, excludeIndex);
+  return candidate.inbounds.some((inbound) => !usedInboundIds.has(inbound.id));
+}
+
+function defaultItem(
+  candidate: BundlePlanCandidate,
+  sortOrder: number,
+  currentItems: BundlePlanFormItem[] = [],
+  excludeIndex?: number,
+): BundlePlanFormItem {
   const isProxy = candidate.type === "PROXY";
+  const usedInboundIds = isProxy
+    ? getUsedInboundIds(currentItems, candidate.id, excludeIndex)
+    : new Set<string>();
+  const selectedInbound = isProxy
+    ? candidate.inbounds.find((inbound) => !usedInboundIds.has(inbound.id)) ?? candidate.inbounds[0]
+    : null;
+
   return {
     planId: candidate.id,
-    selectedInboundId: isProxy ? (candidate.inbounds[0]?.id ?? null) : null,
+    selectedInboundId: selectedInbound?.id ?? null,
     trafficGb: isProxy
       ? candidate.pricingMode === "FIXED_PACKAGE"
         ? candidate.fixedTrafficGb
@@ -62,14 +100,14 @@ export function BundleConfigSection({
   plan,
 }: Props) {
   const candidateMap = new Map(candidates.map((candidate) => [candidate.id, candidate]));
-  const selectableCandidates = candidates.filter(
-    (candidate) => !bundleItems.some((item) => item.planId === candidate.id),
-  );
+  const selectableCandidates = candidates.filter((candidate) => canSelectCandidate(candidate, bundleItems));
 
   function addItem() {
-    const candidate = selectableCandidates[0];
-    if (!candidate) return;
-    setBundleItems((prev) => [...prev, defaultItem(candidate, (prev.length + 1) * 10)]);
+    setBundleItems((prev) => {
+      const candidate = candidates.find((option) => canSelectCandidate(option, prev));
+      if (!candidate) return prev;
+      return [...prev, defaultItem(candidate, (prev.length + 1) * 10, prev)];
+    });
   }
 
   function updateItem(index: number, updater: (item: BundlePlanFormItem) => BundlePlanFormItem) {
@@ -103,7 +141,7 @@ export function BundleConfigSection({
           <div>
             <Label>打包内容</Label>
             <p className="mt-1 text-xs text-muted-foreground">
-              可把多个代理/流媒体小套餐打包成一个大套餐出售。
+              可把多个代理/流媒体小套餐打包成一个大套餐出售。代理套餐可重复添加，每条对应一个不同入站。
             </p>
           </div>
           <Button type="button" variant="outline" size="sm" onClick={addItem} disabled={selectableCandidates.length === 0}>
@@ -120,7 +158,7 @@ export function BundleConfigSection({
 
         {bundleItems.map((item, index) => {
           const candidate = candidateMap.get(item.planId);
-          const selectedIds = new Set(bundleItems.map((current, currentIndex) => currentIndex === index ? "" : current.planId));
+          const usedInboundIds = candidate ? getUsedInboundIds(bundleItems, candidate.id, index) : new Set<string>();
           return (
             <div key={`${item.planId}-${index}`} className="space-y-3 rounded-lg border border-border bg-muted/20 p-3">
               <div className="grid gap-3 md:grid-cols-[1fr_auto]">
@@ -132,7 +170,7 @@ export function BundleConfigSection({
                       if (!planId) return;
                       const next = candidateMap.get(planId);
                       if (!next) return;
-                      updateItem(index, () => defaultItem(next, item.sortOrder));
+                      updateItem(index, () => defaultItem(next, item.sortOrder, bundleItems, index));
                     }}
                   >
                     <SelectTrigger>
@@ -142,7 +180,7 @@ export function BundleConfigSection({
                     </SelectTrigger>
                     <SelectContent>
                       {candidates.map((option) => (
-                        <SelectItem key={option.id} value={option.id} disabled={selectedIds.has(option.id)}>
+                        <SelectItem key={option.id} value={option.id} disabled={!canSelectCandidate(option, bundleItems, index)}>
                           {option.name}
                         </SelectItem>
                       ))}
@@ -175,7 +213,7 @@ export function BundleConfigSection({
                       </SelectTrigger>
                       <SelectContent>
                         {candidate.inbounds.map((inbound) => (
-                          <SelectItem key={inbound.id} value={inbound.id}>
+                          <SelectItem key={inbound.id} value={inbound.id} disabled={usedInboundIds.has(inbound.id)}>
                             {formatCandidateInbound(inbound)}
                           </SelectItem>
                         ))}
