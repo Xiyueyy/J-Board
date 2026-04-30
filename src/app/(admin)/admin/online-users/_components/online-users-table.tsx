@@ -1,6 +1,7 @@
+import type { ReactNode } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
 import { zhCN } from "date-fns/locale";
-import { Activity, Circle, Users, Wifi } from "lucide-react";
+import { Activity, Circle, Globe, MapPin, Users, Wifi } from "lucide-react";
 import { DataTableShell } from "@/components/admin/data-table-shell";
 import {
   DataTable,
@@ -18,7 +19,6 @@ import type { OnlineUserRow } from "../online-users-data";
 interface OnlineUsersTableProps {
   users: OnlineUserRow[];
 }
-
 
 const beijingDateFormatter = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
@@ -64,6 +64,24 @@ function formatExpiry(date: Date | null) {
   );
 }
 
+function CompactList({ items, icon, max = 3 }: { items: string[]; icon?: ReactNode; max?: number }) {
+  if (items.length === 0) return <span className="text-muted-foreground">—</span>;
+  const visible = items.slice(0, max);
+  const extra = items.length - visible.length;
+
+  return (
+    <div className="space-y-1">
+      {visible.map((item) => (
+        <p key={item} className="flex items-center gap-1.5 break-all text-xs tabular-nums" title={item}>
+          {icon}
+          <span>{item}</span>
+        </p>
+      ))}
+      {extra > 0 && <p className="text-[11px] text-muted-foreground">+{extra} 个</p>}
+    </div>
+  );
+}
+
 function UsageBar({ used, limit }: { used: bigint; limit: bigint | null }) {
   if (!limit || limit <= BigInt(0)) return null;
   const percent = Math.min(100, Number((used * BigInt(10000)) / limit) / 100);
@@ -97,12 +115,14 @@ export function OnlineUsersTable({ users }: OnlineUsersTableProps) {
       emptyTitle="暂无在线用户数据"
       emptyDescription="开启 Agent access log 或等待 3x-ui 流量同步后，会显示最近连接节点和活跃状态。"
     >
-      <DataTable aria-label="在线用户列表" className="min-w-[1180px]">
+      <DataTable aria-label="在线用户列表" className="min-w-[1480px]">
         <DataTableHead>
           <DataTableHeaderRow>
             <DataTableHeadCell>用户</DataTableHeadCell>
             <DataTableHeadCell>状态</DataTableHeadCell>
-            <DataTableHeadCell>在线数</DataTableHeadCell>
+            <DataTableHeadCell>在线设备</DataTableHeadCell>
+            <DataTableHeadCell>来源 IP</DataTableHeadCell>
+            <DataTableHeadCell>目标网站</DataTableHeadCell>
             <DataTableHeadCell>最后连接节点</DataTableHeadCell>
             <DataTableHeadCell>最后活跃</DataTableHeadCell>
             <DataTableHeadCell>本月用量</DataTableHeadCell>
@@ -130,13 +150,19 @@ export function OnlineUsersTable({ users }: OnlineUsersTableProps) {
               </DataTableCell>
               <DataTableCell className="tabular-nums">
                 {user.onlineSourceCount > 0 ? (
-                  <span className="inline-flex items-center gap-1.5" title="近 2 分钟活跃数量估算">
+                  <span className="inline-flex items-center gap-1.5" title="近 2 分钟不同来源 IP 数，按机场常用方式估算在线设备">
                     <Users className="size-3.5 text-muted-foreground" />
                     {user.onlineSourceCount} 个
                   </span>
                 ) : (
                   <span className="text-muted-foreground">—</span>
                 )}
+              </DataTableCell>
+              <DataTableCell className="max-w-44 whitespace-normal">
+                <CompactList items={user.recentSourceIps} icon={<MapPin className="size-3 shrink-0 text-muted-foreground" />} />
+              </DataTableCell>
+              <DataTableCell className="max-w-56 whitespace-normal">
+                <CompactList items={user.recentTargetHosts} icon={<Globe className="size-3 shrink-0 text-muted-foreground" />} />
               </DataTableCell>
               <DataTableCell className="max-w-56 whitespace-normal break-words">
                 {user.lastNodeName ? (
