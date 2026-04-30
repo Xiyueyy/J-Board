@@ -10,6 +10,7 @@ import {
   ClipboardList,
   CreditCard,
   Activity,
+  Wifi,
   Waypoints,
   ShieldAlert,
   ScrollText,
@@ -28,6 +29,7 @@ export const adminLinks: SidebarLink[] = [
   { href: "/admin/services", label: "流媒体", icon: <Film size={16} /> },
   { href: "/admin/nodes", label: "节点管理", icon: <Globe size={16} /> },
   { href: "/admin/users", label: "用户管理", icon: <Users size={16} /> },
+  { href: "/admin/online-users", label: "在线用户", icon: <Wifi size={16} /> },
   { href: "/admin/orders", label: "订单管理", icon: <ClipboardList size={16} /> },
   { href: "/admin/subscriptions", label: "订阅管理", icon: <Waypoints size={16} /> },
   { href: "/admin/subscription-risk", label: "订阅风控", icon: <ShieldAlert size={16} /> },
@@ -48,21 +50,21 @@ export const adminNavGroups: SidebarGroup[] = [
   },
   {
     label: "商品与订单",
-    links: [adminLinks[1], adminLinks[2], adminLinks[3], adminLinks[6], adminLinks[7], adminLinks[8], adminLinks[9]],
+    links: [adminLinks[1], adminLinks[2], adminLinks[3], adminLinks[7], adminLinks[8], adminLinks[9], adminLinks[10]],
   },
   {
     label: "基础设施",
-    links: [adminLinks[4], adminLinks[10], adminLinks[11], adminLinks[12]],
+    links: [adminLinks[4], adminLinks[11], adminLinks[12], adminLinks[13]],
     defaultCollapsed: true,
   },
   {
     label: "用户支持",
-    links: [adminLinks[5], adminLinks[13], adminLinks[14]],
+    links: [adminLinks[5], adminLinks[6], adminLinks[14], adminLinks[15]],
     defaultCollapsed: true,
   },
   {
     label: "系统",
-    links: [adminLinks[15], adminLinks[16]],
+    links: [adminLinks[16], adminLinks[17]],
     defaultCollapsed: true,
   },
 ];
