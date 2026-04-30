@@ -2,10 +2,11 @@
 
 `jboard-agent` 是 J-Board 的节点侧旁路程序。它运行在节点 VPS 上，负责把节点体验和节点真实连接证据上报到 J-Board。
 
-它做三件事：
+它做四件事：
 
 - 三网 TCP 延迟探测：`POST /api/agent/latency`
 - 三网路由追踪：`POST /api/agent/trace`
+- 整机网卡入/出站速度采样：`POST /api/agent/system-metrics`
 - Xray access log 聚合：`POST /api/agent/node-access`
 
 它不做这些事：
@@ -24,6 +25,7 @@
 jboard-agent
   ├─ LatencyLoop：定时 TCP connect 三网目标
   ├─ TraceLoop：定时调用 nexttrace 获取三网路由
+  ├─ NetSpeedLoop：读取 /proc/net/dev，计算整机入/出站速度
   └─ XrayAccessLogLoop：读取 Xray access log，聚合真实来源 IP、连接数和不同目标数
        ↓
 J-Board /api/agent/*
@@ -86,6 +88,8 @@ journalctl -u jboard-agent -n 30 --no-pager
 | `AUTH_TOKEN` | 必填 | 后台节点页生成的 Agent Token。 |
 | `LATENCY_INTERVAL` | `5m` | 延迟探测间隔，支持 `30s`、`5m` 或纯秒数。 |
 | `TRACE_INTERVAL` | `30m` | 路由探测间隔，支持 `30m` 或纯秒数。 |
+| `NET_SPEED_INTERVAL` | `10s` | 整机网卡速度采样和上报间隔。 |
+| `NET_SPEED_INTERFACE` | 自动选择 | 指定采样网卡，例如 `eth0`；为空时自动汇总常见公网网卡。 |
 | `XRAY_ACCESS_LOG_PATH` | 自动探测 | Xray access log 路径。为空时节点真实连接风控禁用。 |
 | `XRAY_LOG_INTERVAL` | `1m` | access log 读取、聚合、上报间隔。 |
 | `XRAY_LOG_STATE_FILE` | `/var/lib/jboard-agent/xray-log-state.json` | access log offset 状态文件。 |

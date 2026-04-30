@@ -10,6 +10,8 @@ XRAY_ACCESS_LOG_PATH="${XRAY_ACCESS_LOG_PATH:-}"
 XRAY_LOG_INTERVAL="${XRAY_LOG_INTERVAL:-1m}"
 XRAY_LOG_STATE_FILE="${XRAY_LOG_STATE_FILE:-/var/lib/jboard-agent/xray-log-state.json}"
 XRAY_LOG_START_AT_END="${XRAY_LOG_START_AT_END:-1}"
+NET_SPEED_INTERVAL="${NET_SPEED_INTERVAL:-10s}"
+NET_SPEED_INTERFACE="${NET_SPEED_INTERFACE:-}"
 TMP_DIR="$(mktemp -d)"
 ARCH="$(uname -m)"
 
@@ -287,6 +289,8 @@ else
 fi
 
 echo "[7/7] Writing service and starting..."
+upsert_env_value NET_SPEED_INTERVAL "$NET_SPEED_INTERVAL"
+upsert_env_value NET_SPEED_INTERFACE "$NET_SPEED_INTERFACE"
 write_systemd_service
 run_as_root systemctl daemon-reload
 run_as_root systemctl enable "$SERVICE_NAME"

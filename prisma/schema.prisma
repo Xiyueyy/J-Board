@@ -449,6 +449,22 @@ model NodeServer {
   routeTraces RouteTrace[]
   latencies   NodeLatency[]
   latencyLogs NodeLatencyLog[]
+  systemMetric NodeSystemMetric?
+}
+
+
+model NodeSystemMetric {
+  id            String   @id @default(cuid())
+  nodeId        String   @unique
+  inboundBps    BigInt   @default(0)
+  outboundBps   BigInt   @default(0)
+  interfaceName String?
+  sampledAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  node NodeServer @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@index([sampledAt])
 }
 
 model RouteTrace {

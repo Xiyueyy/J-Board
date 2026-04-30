@@ -12,8 +12,10 @@ type Config struct {
 	ServerURL string
 	AuthToken string
 
-	LatencyInterval time.Duration
-	TraceInterval   time.Duration
+	LatencyInterval   time.Duration
+	TraceInterval     time.Duration
+	NetSpeedInterval  time.Duration
+	NetSpeedInterface string
 
 	XrayAccessLogPath string
 	XrayLogStateFile  string
@@ -27,6 +29,8 @@ func Load() *Config {
 		AuthToken:         envOrDefault("AUTH_TOKEN", ""),
 		LatencyInterval:   envDuration("LATENCY_INTERVAL", 5*time.Minute),
 		TraceInterval:     envDuration("TRACE_INTERVAL", 30*time.Minute),
+		NetSpeedInterval:  envDuration("NET_SPEED_INTERVAL", 10*time.Second),
+		NetSpeedInterface: envOrDefault("NET_SPEED_INTERFACE", ""),
 		XrayAccessLogPath: envOrDefault("XRAY_ACCESS_LOG_PATH", ""),
 		XrayLogStateFile:  envOrDefault("XRAY_LOG_STATE_FILE", "/var/lib/jboard-agent/xray-log-state.json"),
 		XrayLogInterval:   envDuration("XRAY_LOG_INTERVAL", time.Minute),

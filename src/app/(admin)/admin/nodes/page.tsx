@@ -3,6 +3,7 @@ import { AdminFilterBar } from "@/components/admin/filter-bar";
 import { PageHeader, PageShell } from "@/components/shared/page-shell";
 import { Pagination } from "@/components/shared/pagination";
 import { NodeForm } from "./node-form";
+import { NodesAutoRefresh } from "./_components/nodes-auto-refresh";
 import { NodeCardList } from "./_components/node-card-list";
 import { getNodeServers } from "./nodes-data";
 
@@ -23,7 +24,12 @@ export default async function NodesPage({
       <PageHeader
         eyebrow="基础设施"
         title="节点管理"
-        actions={<NodeForm />}
+        actions={(
+          <div className="flex flex-wrap gap-2">
+            <NodesAutoRefresh intervalSeconds={10} />
+            <NodeForm />
+          </div>
+        )}
       />
       <AdminFilterBar
         q={filters.q}
