@@ -244,7 +244,7 @@ export class ThreeXUIAdapter implements NodePanelAdapter {
     client.enable = enable;
     await this.jsonRequest(`/panel/api/inbounds/updateClient/${encodeURIComponent(this.getClientPrimaryKey(inbound.protocol, client))}`, {
       method: "POST",
-      body: JSON.stringify({ id: inboundId, settings: JSON.stringify(settings) }),
+      body: JSON.stringify({ id: inboundId, settings: JSON.stringify({ clients: [client] }) }),
     });
   }
 
