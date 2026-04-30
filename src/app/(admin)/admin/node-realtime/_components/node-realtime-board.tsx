@@ -8,7 +8,6 @@ import type { NodeRealtimeRow, NodeRealtimeUserRow } from "../realtime-data";
 
 const beijingDateFormatter = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
-  year: "numeric",
   month: "2-digit",
   day: "2-digit",
   hour: "2-digit",
@@ -36,52 +35,52 @@ function MetricPill({
   muted?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-muted/20 px-4 py-3">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+    <div className="min-w-0 rounded-lg border border-border bg-muted/20 px-2.5 py-2">
+      <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-none text-muted-foreground">
         {icon}
-        {label}
+        <span className="truncate">{label}</span>
       </div>
-      <p className={cn("mt-2 text-lg font-semibold tabular-nums", muted && "text-muted-foreground")}>{value}</p>
+      <p className={cn("mt-1.5 truncate text-sm font-semibold tabular-nums sm:text-base", muted && "text-muted-foreground")} title={value}>{value}</p>
     </div>
   );
 }
 
-function compactList(items: string[]) {
+function compactList(items: string[], max = 2) {
   if (items.length === 0) return "—";
-  const visible = items.slice(0, 3).join("、");
-  return items.length > 3 ? `${visible} 等 ${items.length} 个` : visible;
+  const visible = items.slice(0, max).join("、");
+  return items.length > max ? `${visible} +${items.length - max}` : visible;
 }
 
 function OnlineUserItem({ user }: { user: NodeRealtimeUserRow }) {
   const displayName = user.name?.trim() || user.email;
+  const sourceTitle = user.recentSourceIps.join("、");
+  const targetTitle = user.recentTargetHosts.join("、");
+  const inboundTitle = user.recentInbounds.join("、");
 
   return (
-    <div className="grid gap-3 rounded-xl border border-border bg-background px-4 py-3 text-sm lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-center">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-primary/15 bg-primary/10 text-primary">
-            <Wifi className="size-4" />
+    <div className="rounded-lg border border-border bg-background px-2.5 py-2 text-xs">
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-md border border-primary/15 bg-primary/10 text-primary">
+            <Wifi className="size-3.5" />
           </span>
           <div className="min-w-0">
-            <p className="truncate font-semibold" title={displayName}>{displayName}</p>
-            <p className="truncate text-xs text-muted-foreground" title={user.email}>{user.email}</p>
+            <p className="truncate font-semibold leading-5" title={displayName}>{displayName}</p>
+            <p className="truncate text-[11px] leading-4 text-muted-foreground" title={user.email}>{user.email}</p>
           </div>
         </div>
+        <span className="shrink-0 rounded-full border border-primary/15 bg-primary/5 px-2 py-0.5 text-[11px] font-medium text-primary">
+          {user.onlineDeviceCount || 1} 设备
+        </span>
       </div>
-      <div className="min-w-0 text-xs text-muted-foreground">
-        <p className="flex items-center gap-1.5 font-medium text-foreground">
-          <Users className="size-3.5" />
-          在线设备 {user.onlineDeviceCount || 1} 个
+      <div className="mt-2 grid gap-x-3 gap-y-1 text-[11px] leading-4 text-muted-foreground sm:grid-cols-2">
+        <p className="truncate" title={inboundTitle}>入站：{compactList(user.recentInbounds)}</p>
+        <p className="truncate" title={sourceTitle}>来源：{compactList(user.recentSourceIps)}</p>
+        <p className="truncate sm:col-span-2" title={targetTitle}>目标：{compactList(user.recentTargetHosts, 3)}</p>
+        <p className="flex items-center gap-1.5 whitespace-nowrap text-muted-foreground sm:col-span-2">
+          <Clock className="size-3" />
+          {formatActiveAt(user.lastActiveAt)}
         </p>
-        <p className="mt-1 truncate" title={user.recentInbounds.join("、")}>入站：{compactList(user.recentInbounds)}</p>
-      </div>
-      <div className="min-w-0 text-xs text-muted-foreground">
-        <p className="truncate" title={user.recentSourceIps.join("、")}>来源 IP：{compactList(user.recentSourceIps)}</p>
-        <p className="mt-1 truncate" title={user.recentTargetHosts.join("、")}>目标：{compactList(user.recentTargetHosts)}</p>
-      </div>
-      <div className="flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
-        <Clock className="size-3.5" />
-        {formatActiveAt(user.lastActiveAt)}
       </div>
     </div>
   );
@@ -92,54 +91,56 @@ function NodeRealtimeCard({ node }: { node: NodeRealtimeRow }) {
   const metricMuted = !metric || !node.systemMetricFresh;
 
   return (
-    <Card>
-      <CardHeader className="flex flex-col gap-3 pb-2 lg:flex-row lg:items-start lg:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/10 text-primary">
-            <Server className="size-5" />
+    <Card size="sm" className="gap-3 py-3">
+      <CardHeader className="flex flex-row items-start justify-between gap-2 px-3 pb-0 sm:px-4">
+        <div className="flex min-w-0 items-start gap-2">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-primary/15 bg-primary/10 text-primary">
+            <Server className="size-4" />
           </span>
           <div className="min-w-0">
-            <CardTitle className="truncate text-lg" title={node.name}>{node.name}</CardTitle>
-            <p className="mt-1 text-xs text-muted-foreground">{node.systemMetricHint}</p>
+            <CardTitle className="truncate text-sm" title={node.name}>{node.name}</CardTitle>
+            <p className="mt-0.5 truncate text-[11px] leading-4 text-muted-foreground" title={node.systemMetricHint}>{node.systemMetricHint}</p>
           </div>
         </div>
-        <StatusBadge tone={node.status === "active" ? "success" : "neutral"}>{node.status}</StatusBadge>
+        <StatusBadge tone={node.status === "active" ? "success" : "neutral"} className="h-5 shrink-0 px-2 text-[11px]">
+          {node.status}
+        </StatusBadge>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-3 md:grid-cols-4">
+      <CardContent className="space-y-3 px-3 sm:px-4">
+        <div className="grid grid-cols-2 gap-2">
           <MetricPill
-            icon={<ArrowDownToLine className="size-3.5 text-sky-500" />}
-            label="整机下载 / 入站"
+            icon={<ArrowDownToLine className="size-3 shrink-0 text-sky-500" />}
+            label="下载/入站"
             value={metric ? formatSpeed(metric.inboundBps) : "未上报"}
             muted={metricMuted}
           />
           <MetricPill
-            icon={<ArrowUpFromLine className="size-3.5 text-emerald-500" />}
-            label="整机上传 / 出站"
+            icon={<ArrowUpFromLine className="size-3 shrink-0 text-emerald-500" />}
+            label="上传/出站"
             value={metric ? formatSpeed(metric.outboundBps) : "未上报"}
             muted={metricMuted}
           />
           <MetricPill
-            icon={<Users className="size-3.5 text-primary" />}
+            icon={<Users className="size-3 shrink-0 text-primary" />}
             label="在线用户"
             value={`${node.onlineUserCount} 个`}
           />
           <MetricPill
-            icon={<MapPin className="size-3.5 text-amber-500" />}
+            icon={<MapPin className="size-3 shrink-0 text-amber-500" />}
             label="在线设备"
             value={`${node.onlineDeviceCount} 个`}
           />
         </div>
 
         {node.onlineUsers.length > 0 ? (
-          <div className="space-y-2">
+          <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1 sm:max-h-72">
             {node.onlineUsers.map((user) => (
               <OnlineUserItem key={user.id} user={user} />
             ))}
           </div>
         ) : (
-          <p className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-5 text-center text-sm text-muted-foreground">
-            近 2 分钟暂无在线用户。
+          <p className="rounded-lg border border-dashed border-border bg-muted/20 px-3 py-3 text-center text-xs text-muted-foreground">
+            近 2 分钟暂无在线用户
           </p>
         )}
       </CardContent>
@@ -159,7 +160,7 @@ export function NodeRealtimeBoard({ nodes }: { nodes: NodeRealtimeRow[] }) {
   }
 
   return (
-    <div className="grid gap-5">
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       {nodes.map((node) => (
         <NodeRealtimeCard key={node.id} node={node} />
       ))}
