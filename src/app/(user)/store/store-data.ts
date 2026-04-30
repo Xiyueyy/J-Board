@@ -15,6 +15,23 @@ export async function getStorePageData(userId?: string) {
           include: { inbound: true },
           orderBy: { createdAt: "asc" },
         },
+        bundleItems: {
+          include: {
+            childPlan: {
+              include: {
+                node: true,
+                inbound: true,
+                streamingService: true,
+                inboundOptions: {
+                  include: { inbound: true },
+                  orderBy: { createdAt: "asc" },
+                },
+              },
+            },
+            selectedInbound: true,
+          },
+          orderBy: { sortOrder: "asc" },
+        },
       },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
     }),

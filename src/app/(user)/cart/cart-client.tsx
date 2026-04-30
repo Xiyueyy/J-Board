@@ -13,7 +13,7 @@ import { checkoutCart, clearCart, removeCartItem } from "@/actions/user/cart";
 interface CartItemView {
   id: string;
   name: string;
-  type: "PROXY" | "STREAMING";
+  type: "PROXY" | "STREAMING" | "BUNDLE";
   categoryName: string;
   description: string | null;
   durationDays: number;
@@ -23,6 +23,7 @@ interface CartItemView {
   nodeName: string | null;
   serviceName: string | null;
   inboundName: string;
+  bundleSummary: string | null;
 }
 
 interface CouponView {
@@ -41,6 +42,28 @@ interface PromotionView {
   name: string;
   thresholdAmount: number;
   discountAmount: number;
+}
+
+function getCartItemTone(type: CartItemView["type"]) {
+  if (type === "PROXY") return "info";
+  if (type === "BUNDLE") return "success";
+  return "warning";
+}
+
+function getCartItemTypeLabel(type: CartItemView["type"]) {
+  if (type === "PROXY") return "代理";
+  if (type === "BUNDLE") return "聚合";
+  return "流媒体";
+}
+
+function getCartItemMeta(item: CartItemView) {
+  if (item.type === "PROXY") {
+    return `${item.nodeName ?? "优选区域"} · ${item.inboundName} · ${item.priceLabel}`;
+  }
+  if (item.type === "BUNDLE") {
+    return `${item.bundleSummary || "多个子套餐"} · ${item.priceLabel}`;
+  }
+  return `${item.serviceName ?? "精选服务"} · ${item.priceLabel}`;
 }
 
 export function CartClient({
@@ -112,8 +135,8 @@ export function CartClient({
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <StatusBadge tone={item.type === "PROXY" ? "info" : "warning"}>
-                    {item.type === "PROXY" ? "代理" : "流媒体"}
+                  <StatusBadge tone={getCartItemTone(item.type)}>
+                    {getCartItemTypeLabel(item.type)}
                   </StatusBadge>
                   <StatusBadge>{item.categoryName}</StatusBadge>
                   <StatusBadge>{item.durationDays} 天</StatusBadge>
@@ -121,9 +144,7 @@ export function CartClient({
                 <div>
                   <h3 className="text-xl font-semibold tracking-[-0.04em]">{item.name}</h3>
                   <p className="mt-1 text-sm leading-6 text-muted-foreground text-pretty">
-                    {item.type === "PROXY"
-                      ? `${item.nodeName ?? "优选区域"} · ${item.inboundName} · ${item.priceLabel}`
-                      : `${item.serviceName ?? "精选服务"} · ${item.priceLabel}`}
+                    {getCartItemMeta(item)}
                   </p>
                 </div>
                 {item.description && (

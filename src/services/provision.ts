@@ -120,8 +120,10 @@ async function provisionNewSubscription(order: PaidOrder, db: DbClient): Promise
       if (nodeId) {
         nodeIds.add(nodeId);
       }
-    } else {
+    } else if (item.plan.type === "STREAMING") {
       await provisionStreamingSlot(subscription.id, order.userId, item.plan, db);
+    } else {
+      throw new Error("聚合套餐订单缺少可开通的子套餐明细");
     }
 
     await recordAuditLog(

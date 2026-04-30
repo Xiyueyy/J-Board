@@ -42,13 +42,13 @@ export function getPlanPurchasePrice(
   >,
   requestedTrafficGb?: number | null,
 ): PurchasePriceSnapshot {
-  if (plan.type === "STREAMING") {
+  if (plan.type === "STREAMING" || plan.type === "BUNDLE") {
     const amount = roundMoney(Number(plan.price ?? 0));
     return {
       trafficGb: null,
       unitAmount: amount,
       amount,
-      label: `${plan.durationDays} 天`,
+      label: plan.type === "BUNDLE" ? `${plan.durationDays} 天 · 聚合套餐` : `${plan.durationDays} 天`,
     };
   }
 

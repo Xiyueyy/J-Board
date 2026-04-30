@@ -13,6 +13,7 @@ import {
   getPlanTrafficPoolState,
 } from "@/services/plan-traffic-pool";
 import { getPlanPurchasePrice, roundMoney } from "@/services/commerce";
+import { confirmPendingOrder } from "@/services/payment/process";
 
 async function assertNoPendingOrder(userId: string) {
   const pendingOrder = await prisma.order.findFirst({
@@ -108,6 +109,161 @@ function getTrafficTopupOrderPrice(
   return roundMoney(pricePerGb * trafficGb);
 }
 
+function getOrderPricing(amount: number, role: string) {
+  const subtotalAmount = roundMoney(amount);
+  if (role === "ADMIN") {
+    return {
+      amount: 0,
+      subtotalAmount,
+      discountAmount: subtotalAmount,
+      promotionName: "管理员免费开通",
+    };
+  }
+
+  return {
+    amount: subtotalAmount,
+    subtotalAmount,
+    discountAmount: 0,
+    promotionName: null,
+  };
+}
+
+async function autoConfirmAdminOrder(orderId: string, role: string) {
+  if (role !== "ADMIN") return;
+
+  const result = await confirmPendingOrder(orderId);
+  if (result.finalStatus !== "PAID") {
+    throw new Error(result.errorMessage
+      ? `管理员免费开通失败：${result.errorMessage}`
+      : "管理员免费开通失败，请到订单页查看详情");
+  }
+}
+
+type BundlePlanForPurchase = Awaited<ReturnType<typeof getBundlePlanForPurchase>>;
+
+function getBundlePriceAmount(plan: { price: unknown; name: string }) {
+  const amount = roundMoney(Number(plan.price ?? 0));
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error(`${plan.name} 暂未设置有效售价`);
+  }
+  return amount;
+}
+
+async function getBundlePlanForPurchase(planId: string) {
+  return prisma.subscriptionPlan.findUniqueOrThrow({
+    where: { id: planId },
+    include: {
+      bundleItems: {
+        include: {
+          childPlan: {
+            include: {
+              inbound: true,
+              inboundOptions: {
+                include: { inbound: true },
+                orderBy: { createdAt: "asc" },
+              },
+            },
+          },
+          selectedInbound: true,
+        },
+        orderBy: { sortOrder: "asc" },
+      },
+    },
+  });
+}
+
+function getBundleChildSelectableInboundIds(childPlan: BundlePlanForPurchase["bundleItems"][number]["childPlan"]) {
+  if (childPlan.inboundOptions.length > 0) {
+    return childPlan.inboundOptions
+      .map((option) => option.inbound)
+      .filter((inbound) => inbound.isActive && inbound.serverId === childPlan.nodeId)
+      .map((inbound) => inbound.id);
+  }
+
+  if (childPlan.inbound && childPlan.inbound.isActive && childPlan.inbound.serverId === childPlan.nodeId) {
+    return [childPlan.inbound.id];
+  }
+
+  return [];
+}
+
+async function buildBundleOrderItems(plan: BundlePlanForPurchase, userId: string) {
+  if (plan.type !== "BUNDLE") {
+    throw new Error(`套餐类型不匹配：${plan.name} 是 ${plan.type}，不能作为聚合套餐购买`);
+  }
+  if (!plan.isActive) throw new Error(`套餐已下架：${plan.name} 当前不可购买`);
+  if (plan.bundleItems.length === 0) throw new Error(`${plan.name} 暂未配置打包内容`);
+
+  const availability = await getPlanAvailability(plan, { userId });
+  if (!availability.available) {
+    throw new Error(buildUnavailableMessage(availability));
+  }
+
+  const orderItems: Array<{
+    planId: string;
+    selectedInboundId: string | null;
+    trafficGb: number | null;
+    unitAmount: number;
+    amount: number;
+  }> = [];
+  const trafficByPlan = new Map<string, number>();
+
+  for (const item of plan.bundleItems) {
+    const childPlan = item.childPlan;
+    if (!childPlan.isActive) {
+      throw new Error(`${childPlan.name} 已下架，聚合套餐暂时不能购买`);
+    }
+    if (childPlan.type === "BUNDLE") {
+      throw new Error("聚合套餐暂不支持嵌套购买另一个聚合套餐");
+    }
+
+    const childAvailability = await getPlanAvailability(childPlan, { userId });
+    if (!childAvailability.available) {
+      throw new Error(`${childPlan.name}：${buildUnavailableMessage(childAvailability)}`);
+    }
+
+    if (childPlan.type === "PROXY") {
+      const trafficGb = item.trafficGb;
+      if (!trafficGb || trafficGb <= 0) {
+        throw new Error(`${childPlan.name} 缺少打包流量配置`);
+      }
+      const selectableInboundIds = getBundleChildSelectableInboundIds(childPlan);
+      if (selectableInboundIds.length === 0) {
+        throw new Error(`${childPlan.name} 的线路入口正在整理中，暂时不能购买`);
+      }
+      const selectedInboundId = item.selectedInboundId ?? selectableInboundIds[0];
+      if (!selectableInboundIds.includes(selectedInboundId)) {
+        throw new Error(`${childPlan.name} 的聚合入站已失效，请重新保存聚合套餐`);
+      }
+
+      trafficByPlan.set(childPlan.id, (trafficByPlan.get(childPlan.id) ?? 0) + trafficGb);
+      orderItems.push({
+        planId: childPlan.id,
+        selectedInboundId,
+        trafficGb,
+        unitAmount: 0,
+        amount: 0,
+      });
+    } else {
+      orderItems.push({
+        planId: childPlan.id,
+        selectedInboundId: null,
+        trafficGb: null,
+        unitAmount: 0,
+        amount: 0,
+      });
+    }
+  }
+
+  for (const [childPlanId, trafficGb] of trafficByPlan) {
+    await ensurePlanTrafficPoolCapacity(childPlanId, trafficGb, {
+      messagePrefix: "聚合套餐中的代理额度暂时不足",
+    });
+  }
+
+  return orderItems;
+}
+
 export async function purchaseProxy(
   planId: string,
   trafficGb: number,
@@ -180,14 +336,16 @@ export async function purchaseProxy(
     throw new Error("这款套餐的线路入口正在整理中，暂时不能购买");
   }
 
+  const orderPricing = getOrderPricing(price.amount, session.user.role);
   const order = await prisma.order.create({
     data: {
       userId: session.user.id,
       planId,
       kind: "NEW_PURCHASE",
-      amount: price.amount,
-      subtotalAmount: price.amount,
-      discountAmount: 0,
+      amount: orderPricing.amount,
+      subtotalAmount: orderPricing.subtotalAmount,
+      discountAmount: orderPricing.discountAmount,
+      promotionName: orderPricing.promotionName,
       selectedInboundId,
       status: "PENDING",
       items: {
@@ -202,6 +360,7 @@ export async function purchaseProxy(
     },
   });
 
+  await autoConfirmAdminOrder(order.id, session.user.role);
   return order.id;
 }
 
@@ -222,14 +381,16 @@ export async function purchaseStreaming(planId: string): Promise<string> {
   }
 
   const price = getPlanPurchasePrice(plan);
+  const orderPricing = getOrderPricing(price.amount, session.user.role);
   const order = await prisma.order.create({
     data: {
       userId: session.user.id,
       planId,
       kind: "NEW_PURCHASE",
-      amount: price.amount,
-      subtotalAmount: price.amount,
-      discountAmount: 0,
+      amount: orderPricing.amount,
+      subtotalAmount: orderPricing.subtotalAmount,
+      discountAmount: orderPricing.discountAmount,
+      promotionName: orderPricing.promotionName,
       status: "PENDING",
       items: {
         create: {
@@ -242,6 +403,36 @@ export async function purchaseStreaming(planId: string): Promise<string> {
     },
   });
 
+  await autoConfirmAdminOrder(order.id, session.user.role);
+  return order.id;
+}
+
+export async function purchaseBundle(planId: string): Promise<string> {
+  const session = await requireAuth();
+  await assertNoPendingOrder(session.user.id);
+
+  const plan = await getBundlePlanForPurchase(planId);
+  const amount = getBundlePriceAmount(plan);
+  const orderItems = await buildBundleOrderItems(plan, session.user.id);
+  const orderPricing = getOrderPricing(amount, session.user.role);
+
+  const order = await prisma.order.create({
+    data: {
+      userId: session.user.id,
+      planId: plan.id,
+      kind: "NEW_PURCHASE",
+      amount: orderPricing.amount,
+      subtotalAmount: orderPricing.subtotalAmount,
+      discountAmount: orderPricing.discountAmount,
+      promotionName: orderPricing.promotionName,
+      status: "PENDING",
+      items: {
+        create: orderItems,
+      },
+    },
+  });
+
+  await autoConfirmAdminOrder(order.id, session.user.role);
   return order.id;
 }
 

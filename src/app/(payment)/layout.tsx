@@ -22,13 +22,11 @@ export default async function PaymentLayout({
     redirect("/login");
   }
 
-  if (session.user.role === "ADMIN") {
-    redirect("/admin/dashboard");
-  }
-
-  const restriction = await getActiveSubscriptionRiskRestriction(session.user.id);
-  if (restriction) {
-    redirect("/support?riskEventId=" + restriction.id);
+  if (session.user.role !== "ADMIN") {
+    const restriction = await getActiveSubscriptionRiskRestriction(session.user.id);
+    if (restriction) {
+      redirect("/support?riskEventId=" + restriction.id);
+    }
   }
 
   return children;

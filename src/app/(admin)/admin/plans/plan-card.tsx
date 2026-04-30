@@ -1,8 +1,9 @@
-import { Network, Tv } from "lucide-react";
+import { Boxes, Network, Tv } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ActiveStatusBadge, StatusBadge } from "@/components/admin/status-badge";
 import { DetailItem, DetailList } from "@/components/admin/detail-list";
 import {
+  type BundlePlanCandidate,
   PlanFormValue,
   type StreamingServiceOption,
 } from "./plan-form";
@@ -13,7 +14,7 @@ type NumericLike = number | { toString(): string } | null | undefined;
 interface PlanListItem {
   id: string;
   name: string;
-  type: "PROXY" | "STREAMING";
+  type: "PROXY" | "STREAMING" | "BUNDLE";
   description: string | null;
   durationDays: number;
   sortOrder: number;
@@ -51,6 +52,14 @@ interface PlanListItem {
     inboundId: string;
     inbound: { protocol: string; port: number; tag: string };
   }>;
+  bundleItems: Array<{
+    childPlanId: string;
+    selectedInboundId: string | null;
+    trafficGb: number | null;
+    sortOrder: number;
+    childPlan: { name: string; type: "PROXY" | "STREAMING" | "BUNDLE"; pricingMode: "TRAFFIC_SLIDER" | "FIXED_PACKAGE"; fixedTrafficGb: number | null };
+    selectedInbound: { protocol: string; port: number; tag: string } | null;
+  }>;
   _count: { subscriptions: number };
 }
 
@@ -58,6 +67,7 @@ interface PlanCardProps {
   plan: PlanListItem;
   activeCount: number;
   services: StreamingServiceOption[];
+  bundleCandidates: BundlePlanCandidate[];
   batchFormId: string;
 }
 
@@ -123,13 +133,19 @@ function buildPlanFormValue(plan: PlanListItem): PlanFormValue {
     pricePerGb: toNumber(plan.pricePerGb),
     minTrafficGb: plan.minTrafficGb,
     maxTrafficGb: plan.maxTrafficGb,
+    bundleItems: plan.bundleItems.map((item) => ({
+      planId: item.childPlanId,
+      selectedInboundId: item.selectedInboundId,
+      trafficGb: item.trafficGb,
+      sortOrder: item.sortOrder,
+    })),
   };
 }
 
-export function PlanCard({ plan, activeCount, services, batchFormId }: PlanCardProps) {
+export function PlanCard({ plan, activeCount, services, bundleCandidates, batchFormId }: PlanCardProps) {
   const remaining = plan.totalLimit == null ? null : Math.max(0, plan.totalLimit - activeCount);
   const planFormValue = buildPlanFormValue(plan);
-  const Icon = plan.type === "PROXY" ? Network : Tv;
+  const Icon = plan.type === "PROXY" ? Network : plan.type === "STREAMING" ? Tv : Boxes;
 
   return (
     <Card>
@@ -157,13 +173,14 @@ export function PlanCard({ plan, activeCount, services, batchFormId }: PlanCardP
           <PlanActions
             isActive={plan.isActive}
             services={services}
+            bundleCandidates={bundleCandidates}
             plan={planFormValue}
           />
         </div>
 
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 p-3">
-          <StatusBadge tone={plan.type === "PROXY" ? "info" : "warning"}>
-            {plan.type === "PROXY" ? "代理套餐" : "流媒体套餐"}
+          <StatusBadge tone={plan.type === "PROXY" ? "info" : plan.type === "STREAMING" ? "warning" : "success"}>
+            {plan.type === "PROXY" ? "代理套餐" : plan.type === "STREAMING" ? "流媒体套餐" : "聚合套餐"}
           </StatusBadge>
           <ActiveStatusBadge active={plan.isActive} activeLabel="上架中" inactiveLabel="已下架" />
           <StatusBadge>{plan.durationDays} 天</StatusBadge>
@@ -172,7 +189,9 @@ export function PlanCard({ plan, activeCount, services, batchFormId }: PlanCardP
               ? plan.pricingMode === "FIXED_PACKAGE"
                 ? `${money(plan.fixedPrice)} / ${plan.fixedTrafficGb ?? 0}GB`
                 : `${money(plan.pricePerGb)}/GB`
-              : money(plan.price)}
+              : plan.type === "BUNDLE"
+                ? `${money(plan.price)} / ${plan.bundleItems.length} 个子套餐`
+                : money(plan.price)}
           </StatusBadge>
         </div>
       </CardHeader>
@@ -208,7 +227,7 @@ export function PlanCard({ plan, activeCount, services, batchFormId }: PlanCardP
               {renewalSummary(plan)} / {topupSummary(plan)}
             </DetailItem>
           </DetailList>
-        ) : (
+        ) : plan.type === "STREAMING" ? (
           <DetailList>
             <DetailItem label="绑定服务">{plan.streamingService?.name ?? "未绑定"}</DetailItem>
             <DetailItem label="服务占用">
@@ -219,6 +238,21 @@ export function PlanCard({ plan, activeCount, services, batchFormId }: PlanCardP
             <DetailItem label="续费">
               {renewalSummary(plan)}
             </DetailItem>
+            <DetailItem label="库存">
+              {plan.totalLimit == null ? "不限量" : `${activeCount}/${plan.totalLimit}`}
+              {plan.perUserLimit != null ? ` · 每人限 ${plan.perUserLimit}` : ""}
+            </DetailItem>
+          </DetailList>
+        ) : (
+          <DetailList>
+            <DetailItem label="打包内容">
+              {plan.bundleItems.length > 0
+                ? plan.bundleItems
+                    .map((item) => `${item.childPlan.name}${item.trafficGb ? ` · ${item.trafficGb}GB` : ""}`)
+                    .join(" / ")
+                : "未配置"}
+            </DetailItem>
+            <DetailItem label="售价">{money(plan.price)}</DetailItem>
             <DetailItem label="库存">
               {plan.totalLimit == null ? "不限量" : `${activeCount}/${plan.totalLimit}`}
               {plan.perUserLimit != null ? ` · 每人限 ${plan.perUserLimit}` : ""}

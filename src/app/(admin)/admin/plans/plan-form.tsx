@@ -14,6 +14,7 @@ import { createPlan, updatePlan } from "@/actions/admin/plans";
 import { getErrorMessage } from "@/lib/errors";
 import { toast } from "sonner";
 import {
+  BundleConfigSection,
   PlanBasicsFields,
   PlanLimitsFields,
   PlanPolicySection,
@@ -22,12 +23,13 @@ import {
   StreamingConfigSection,
 } from "./plan-form-sections";
 import type {
+  BundlePlanCandidate,
   PlanFormValue,
   StreamingServiceOption,
 } from "./plan-form-types";
 import { usePlanFormState } from "./use-plan-form-state";
 
-export type { PlanFormValue, StreamingServiceOption } from "./plan-form-types";
+export type { BundlePlanCandidate, PlanFormValue, StreamingServiceOption } from "./plan-form-types";
 
 function FormSection({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -41,11 +43,13 @@ function FormSection({ title, children }: { title: string; children: ReactNode }
 export function PlanForm({
   plan,
   services,
+  bundleCandidates = [],
   triggerLabel,
   triggerVariant = "default",
 }: {
   plan?: PlanFormValue;
   services: StreamingServiceOption[];
+  bundleCandidates?: BundlePlanCandidate[];
   triggerLabel?: string;
   triggerVariant?: "default" | "outline" | "ghost";
 }) {
@@ -66,6 +70,8 @@ export function PlanForm({
     setStreamingServiceId,
     pricingMode,
     setPricingMode,
+    bundleItems,
+    setBundleItems,
     allowRenewal,
     setAllowRenewal,
     allowTrafficTopup,
@@ -89,12 +95,14 @@ export function PlanForm({
     if (submitting) return;
 
     const formData = new FormData(event.currentTarget);
+    const effectiveAllowRenewal = type !== "BUNDLE" && allowRenewal;
     formData.set("type", type);
-    formData.set("allowRenewal", String(allowRenewal));
+    formData.set("allowRenewal", String(effectiveAllowRenewal));
     formData.set("allowTrafficTopup", String(type === "PROXY" ? allowTrafficTopup : false));
     formData.set("pricingMode", type === "PROXY" ? pricingMode : "TRAFFIC_SLIDER");
+    formData.set("bundleItems", JSON.stringify(bundleItems));
 
-    if (!allowRenewal) {
+    if (!effectiveAllowRenewal) {
       formData.delete("renewalPrice");
       formData.delete("renewalPricingMode");
       formData.delete("renewalDurationDays");
@@ -129,7 +137,7 @@ export function PlanForm({
       formData.set("inboundId", selectedInboundIds[0]);
       formData.set("inboundIds", selectedInboundIds.join(","));
       formData.delete("streamingServiceId");
-    } else {
+    } else if (type === "STREAMING") {
       if (!streamingServiceId) {
         toast.error("请先选择流媒体服务");
         return;
@@ -139,6 +147,23 @@ export function PlanForm({
       formData.delete("inboundId");
       formData.delete("inboundIds");
       formData.delete("totalTrafficGb");
+      formData.delete("topupPricingMode");
+      formData.delete("topupPricePerGb");
+      formData.delete("topupFixedPrice");
+      formData.delete("minTopupGb");
+      formData.delete("maxTopupGb");
+      formData.delete("renewalTrafficGb");
+    } else {
+      if (bundleItems.length === 0) {
+        toast.error("请至少添加一个子套餐");
+        return;
+      }
+      formData.delete("nodeId");
+      formData.delete("inboundId");
+      formData.delete("inboundIds");
+      formData.delete("streamingServiceId");
+      formData.delete("totalTrafficGb");
+      formData.delete("allowTrafficTopup");
       formData.delete("topupPricingMode");
       formData.delete("topupPricePerGb");
       formData.delete("topupFixedPrice");
@@ -209,7 +234,7 @@ export function PlanForm({
                   toggleInbound={toggleInbound}
                 />
               </FormSection>
-            ) : (
+            ) : type === "STREAMING" ? (
               <FormSection title="服务与定价">
                 <StreamingConfigSection
                   fieldId={fieldId}
@@ -218,6 +243,16 @@ export function PlanForm({
                   streamingServiceId={streamingServiceId}
                   setStreamingServiceId={setStreamingServiceId}
                   hasStreamingServices={hasStreamingServices}
+                />
+              </FormSection>
+            ) : (
+              <FormSection title="聚合内容">
+                <BundleConfigSection
+                  fieldId={fieldId}
+                  plan={plan}
+                  candidates={bundleCandidates.filter((candidate) => candidate.id !== plan?.id)}
+                  bundleItems={bundleItems}
+                  setBundleItems={setBundleItems}
                 />
               </FormSection>
             )}

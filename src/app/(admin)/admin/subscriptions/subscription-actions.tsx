@@ -22,7 +22,7 @@ export function AdminSubscriptionActions({
 }: {
   subscriptionId: string;
   status: "ACTIVE" | "EXPIRED" | "CANCELLED" | "SUSPENDED";
-  type: "PROXY" | "STREAMING";
+  type: "PROXY" | "STREAMING" | "BUNDLE";
   streamingServices: StreamingServiceOption[];
 }) {
   return (

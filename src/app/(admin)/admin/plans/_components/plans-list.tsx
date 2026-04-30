@@ -2,7 +2,7 @@ import { batchPlanOperation } from "@/actions/admin/plans";
 import { BatchActionBar, BatchActionButton } from "@/components/admin/batch-action-bar";
 import { EmptyState } from "@/components/shared/page-shell";
 import { PlanCard } from "../plan-card";
-import { PlanForm, type StreamingServiceOption } from "../plan-form";
+import { PlanForm, type BundlePlanCandidate, type StreamingServiceOption } from "../plan-form";
 import type { AdminPlanRow } from "../plans-data";
 
 export const PLAN_BATCH_FORM_ID = "plan-batch-form";
@@ -11,10 +11,12 @@ export function PlansList({
   plans,
   activeCountMap,
   services,
+  bundleCandidates,
 }: {
   plans: AdminPlanRow[];
   activeCountMap: Map<string, number>;
   services: StreamingServiceOption[];
+  bundleCandidates: BundlePlanCandidate[];
 }) {
   return (
     <>
@@ -32,6 +34,7 @@ export function PlansList({
             plan={plan}
             activeCount={activeCountMap.get(plan.id) ?? 0}
             services={services}
+            bundleCandidates={bundleCandidates}
             batchFormId={PLAN_BATCH_FORM_ID}
           />
         ))}
@@ -39,7 +42,7 @@ export function PlansList({
           <EmptyState
             title="暂无套餐"
             description="创建第一个套餐后，用户就可以在商店中购买。"
-            action={<PlanForm services={services} triggerLabel="创建套餐" />}
+            action={<PlanForm services={services} bundleCandidates={bundleCandidates} triggerLabel="创建套餐" />}
           />
         )}
       </div>

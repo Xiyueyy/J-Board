@@ -27,14 +27,12 @@ export default async function UserLayout({
   if (!session) {
     redirect("/login");
   }
-  if (session.user.role === "ADMIN") {
-    redirect("/admin/dashboard");
-  }
-
   const userName = session.user.name || session.user.email || "";
   const [unreadCount, activeRestriction] = await Promise.all([
     getUnreadNotificationCount(session.user.id),
-    getActiveSubscriptionRiskRestriction(session.user.id),
+    session.user.role === "ADMIN"
+      ? Promise.resolve(null)
+      : getActiveSubscriptionRiskRestriction(session.user.id),
   ]);
   const restrictionNotice = activeRestriction
     ? {
@@ -57,7 +55,7 @@ export default async function UserLayout({
         <main className="flex-1 overflow-auto px-3 py-4 sm:px-5 sm:py-6 md:pt-0 lg:px-7 lg:pb-7">
           <SubscriptionRiskRestrictionGate restriction={restrictionNotice} />
           <Suspense fallback={null}>
-            <AnnouncementLoader userId={session.user.id} role="USER" />
+            <AnnouncementLoader userId={session.user.id} role={session.user.role === "ADMIN" ? "ADMIN" : "USER"} />
           </Suspense>
           <PageTransition>{children}</PageTransition>
         </main>

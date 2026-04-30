@@ -47,6 +47,7 @@ export default async function AdminSubscriptionsPage({
               { label: "全部类型", value: "" },
               { label: "代理", value: "PROXY" },
               { label: "流媒体", value: "STREAMING" },
+              { label: "聚合", value: "BUNDLE" },
             ],
           },
         ]}

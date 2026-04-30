@@ -5,6 +5,7 @@ import { fetchJson } from "@/lib/fetch-json";
 import { getErrorMessage } from "@/lib/errors";
 import { toast } from "sonner";
 import type {
+  BundlePlanFormItem,
   InboundOption,
   NodeOption,
   PlanFormValue,
@@ -30,6 +31,7 @@ export function usePlanFormState({ plan, services, isEdit }: UsePlanFormStateArg
   );
   const [streamingServiceId, setStreamingServiceId] = useState(plan?.streamingServiceId ?? "");
   const [pricingMode, setPricingMode] = useState<PlanPricingMode>(plan?.pricingMode ?? "TRAFFIC_SLIDER");
+  const [bundleItems, setBundleItems] = useState<BundlePlanFormItem[]>(plan?.bundleItems ?? []);
   const [allowRenewal, setAllowRenewal] = useState(plan?.allowRenewal ?? false);
   const [allowTrafficTopup, setAllowTrafficTopup] = useState(plan?.allowTrafficTopup ?? false);
   const [renewalPricingMode, setRenewalPricingMode] = useState<PlanFormValue["renewalPricingMode"]>(
@@ -100,6 +102,7 @@ export function usePlanFormState({ plan, services, isEdit }: UsePlanFormStateArg
     );
     setStreamingServiceId(plan.streamingServiceId ?? "");
     setPricingMode(plan.pricingMode ?? "TRAFFIC_SLIDER");
+    setBundleItems(plan.bundleItems ?? []);
     setAllowRenewal(plan.allowRenewal ?? false);
     setAllowTrafficTopup(plan.allowTrafficTopup ?? false);
     setRenewalPricingMode(plan.renewalPricingMode ?? "FIXED_DURATION");
@@ -113,6 +116,7 @@ export function usePlanFormState({ plan, services, isEdit }: UsePlanFormStateArg
     setSelectedInboundIds([]);
     setStreamingServiceId(hasStreamingServices ? services[0].id : "");
     setPricingMode("TRAFFIC_SLIDER");
+    setBundleItems([]);
     setAllowRenewal(false);
     setAllowTrafficTopup(false);
     setRenewalPricingMode("FIXED_DURATION");
@@ -154,6 +158,8 @@ export function usePlanFormState({ plan, services, isEdit }: UsePlanFormStateArg
     setStreamingServiceId,
     pricingMode,
     setPricingMode,
+    bundleItems,
+    setBundleItems,
     allowRenewal,
     setAllowRenewal,
     allowTrafficTopup,

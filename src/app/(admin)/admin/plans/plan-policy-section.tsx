@@ -47,13 +47,15 @@ export function PlanPolicySection({
   return (
     <>
       <div className="form-panel grid gap-4 sm:grid-cols-2">
-        <div className="flex items-center justify-between gap-4 rounded-lg bg-muted/20 p-3">
-          <div>
-            <p id={fieldId("allowRenewal-label")} className="text-sm font-medium">开放续费</p>
-            <p className="text-xs text-muted-foreground">用户可拖动选择续费时长</p>
+        {type !== "BUNDLE" && (
+          <div className="flex items-center justify-between gap-4 rounded-lg bg-muted/20 p-3">
+            <div>
+              <p id={fieldId("allowRenewal-label")} className="text-sm font-medium">开放续费</p>
+              <p className="text-xs text-muted-foreground">用户可拖动选择续费时长</p>
+            </div>
+            <Switch aria-labelledby={fieldId("allowRenewal-label")} checked={allowRenewal} onCheckedChange={setAllowRenewal} />
           </div>
-          <Switch aria-labelledby={fieldId("allowRenewal-label")} checked={allowRenewal} onCheckedChange={setAllowRenewal} />
-        </div>
+        )}
         {type === "PROXY" && (
           <div className="flex items-center justify-between gap-4 rounded-lg bg-muted/20 p-3">
             <div>
@@ -65,7 +67,7 @@ export function PlanPolicySection({
         )}
       </div>
 
-      {allowRenewal && (
+      {type !== "BUNDLE" && allowRenewal && (
         <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <div>

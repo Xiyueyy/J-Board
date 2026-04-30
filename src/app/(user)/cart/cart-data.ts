@@ -21,6 +21,12 @@ export async function getCartPageData(userId: string) {
             category: true,
             streamingService: true,
             node: true,
+            bundleItems: {
+              include: {
+                childPlan: true,
+              },
+              orderBy: { sortOrder: "asc" },
+            },
           },
         },
         selectedInbound: true,
@@ -52,7 +58,12 @@ export async function getCartPageData(userId: string) {
       planId: item.planId,
       name: item.plan.name,
       type: item.plan.type,
-      categoryName: item.plan.category?.name ?? (item.plan.type === "PROXY" ? "代理连接" : "流媒体共享"),
+      categoryName: item.plan.category?.name
+        ?? (item.plan.type === "PROXY"
+          ? "代理连接"
+          : item.plan.type === "BUNDLE"
+            ? "聚合套餐"
+            : "流媒体共享"),
       description: item.plan.description,
       durationDays: item.plan.durationDays,
       amount: price.amount,
@@ -61,6 +72,9 @@ export async function getCartPageData(userId: string) {
       nodeName: item.plan.node?.name ?? null,
       serviceName: item.plan.streamingService?.name ?? null,
       inboundName: getInboundDisplayName(item.selectedInbound),
+      bundleSummary: item.plan.type === "BUNDLE"
+        ? item.plan.bundleItems.map((bundleItem) => bundleItem.childPlan.name).join(" / ")
+        : null,
     };
   });
 

@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import { getActiveSession } from "@/lib/require-auth";
 import Link from "next/link";
-import { Film, LifeBuoy, Radio } from "lucide-react";
+import { Film, LifeBuoy, Package, Radio } from "lucide-react";
 
 import { EmptyState, PageShell } from "@/components/shared/page-shell";
 import { buttonVariants } from "@/components/ui/button";
 import { PendingOrderBanner } from "./pending-order-banner";
 import { ProxyPlanCard } from "./proxy-plan-card";
 import { StreamingPlanCard } from "./streaming-plan-card";
+import { BundlePlanCard } from "./bundle-plan-card";
 import { StorePlanSection } from "./store-plan-section";
 import { StoreLatencyRecommendations } from "./store-latency-recommendations";
 
@@ -15,9 +16,11 @@ import { LatencyLoader } from "./latency-loader";
 import { TraceLoader } from "./trace-loader";
 import { getStorePageData } from "./store-data";
 import {
+  getBundlePlans,
   getProxyNodeIds,
   getProxyPlans,
   getStreamingPlans,
+  toBundlePlanCard,
   toProxyPlanCard,
   toStreamingPlanCard,
 } from "./store-plan-mappers";
@@ -31,8 +34,10 @@ export const metadata: Metadata = {
 export default async function StorePage() {
   const session = await getActiveSession();
   const { plans, availabilityMap, pendingOrder, latencyRecommendations } = await getStorePageData(session?.user.id);
+  const bundlePlans = getBundlePlans(plans);
   const proxyPlans = getProxyPlans(plans);
   const streamingPlans = getStreamingPlans(plans);
+  const bundleCards = sortPlansForDisplay(bundlePlans.map((plan) => toBundlePlanCard(plan, availabilityMap.get(plan.id))));
   const proxyCards = sortPlansForDisplay(proxyPlans.map((plan) => toProxyPlanCard(plan, availabilityMap.get(plan.id))));
   const streamingCards = sortPlansForDisplay(streamingPlans.map((plan) => toStreamingPlanCard(plan, availabilityMap.get(plan.id))));
   const proxyNodeIds = getProxyNodeIds(proxyPlans);
@@ -49,7 +54,7 @@ export default async function StorePage() {
           </h1>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-3">
           <div className="choice-card p-4">
             <div className="flex items-start gap-3">
               <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -72,6 +77,17 @@ export default async function StorePage() {
               </div>
             </div>
           </div>
+          <div className="choice-card p-4">
+            <div className="flex items-start gap-3">
+              <span className="flex size-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+                <Package className="size-4" />
+              </span>
+              <div>
+                <p className="text-sm font-medium">聚合大套餐</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">多套餐打包购买</p>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -79,6 +95,19 @@ export default async function StorePage() {
 
       {proxyCards.length > 0 && (
         <StoreLatencyRecommendations initialItems={latencyRecommendations} />
+      )}
+
+      {bundleCards.length > 0 && (
+        <StorePlanSection
+          id="bundle-plans"
+          eyebrow="BUNDLE"
+          title="聚合大套餐"
+          gridClassName="lg:grid-cols-2 xl:grid-cols-3"
+        >
+          {bundleCards.map((plan) => (
+            <BundlePlanCard key={plan.id} plan={plan} />
+          ))}
+        </StorePlanSection>
       )}
 
       {proxyCards.length > 0 && (

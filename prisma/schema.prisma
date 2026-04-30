@@ -27,6 +27,7 @@ enum EmailTokenPurpose {
 enum SubscriptionType {
   STREAMING
   PROXY
+  BUNDLE
 }
 
 enum SubscriptionStatus {
@@ -279,6 +280,8 @@ model SubscriptionPlan {
   inbound          NodeInbound?          @relation(fields: [inboundId], references: [id])
   streamingService StreamingService?     @relation(fields: [streamingServiceId], references: [id])
   inboundOptions   PlanInboundOption[]
+  bundleItems      PlanBundleItem[]     @relation("BundlePlanItems")
+  bundledInItems   PlanBundleItem[]     @relation("BundledChildPlanItems")
   subscriptions    UserSubscription[]
   orders           Order[]
   cartItems        ShoppingCartItem[]
@@ -288,6 +291,24 @@ model SubscriptionPlan {
   @@index([inboundId])
   @@index([streamingServiceId])
   @@index([categoryId])
+}
+
+model PlanBundleItem {
+  id                String   @id @default(cuid())
+  bundlePlanId      String
+  childPlanId       String
+  selectedInboundId String?
+  trafficGb         Int?
+  sortOrder         Int      @default(100)
+  createdAt         DateTime @default(now())
+
+  bundlePlan      SubscriptionPlan @relation("BundlePlanItems", fields: [bundlePlanId], references: [id], onDelete: Cascade)
+  childPlan       SubscriptionPlan @relation("BundledChildPlanItems", fields: [childPlanId], references: [id], onDelete: Cascade)
+  selectedInbound NodeInbound?     @relation(fields: [selectedInboundId], references: [id], onDelete: SetNull)
+
+  @@index([bundlePlanId])
+  @@index([childPlanId])
+  @@index([selectedInboundId])
 }
 
 model UserSubscription {
@@ -461,6 +482,7 @@ model NodeInbound {
   clients          NodeClient[]
   plans            SubscriptionPlan[]
   planOptions      PlanInboundOption[]
+  bundleItems      PlanBundleItem[]
   selectedByOrders Order[]
   cartItems        ShoppingCartItem[]
   orderItems       OrderItem[]

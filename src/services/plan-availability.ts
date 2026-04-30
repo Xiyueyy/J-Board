@@ -41,10 +41,84 @@ export function buildUnavailableMessage(availability: PlanAvailability): string 
   return `${prefix}，预计最早可购买时间：${formatAvailabilityDateTime(availability.nextAvailableAt)}`;
 }
 
-async function getEarliestPlanExpiry(planId: string): Promise<Date | null> {
-  const earliest = await prisma.userSubscription.findFirst({
+async function getActivePlanCount(plan: PlanAvailabilityInput): Promise<number> {
+  if (plan.type === "BUNDLE") {
+    return prisma.order.count({
+      where: {
+        planId: plan.id,
+        kind: "NEW_PURCHASE",
+        status: "PAID",
+        subscription: {
+          is: { status: "ACTIVE" },
+        },
+      },
+    });
+  }
+
+  return prisma.userSubscription.count({
+    where: {
+      planId: plan.id,
+      status: "ACTIVE",
+    },
+  });
+}
+
+async function getActiveUserPlanCount(plan: PlanAvailabilityInput, userId: string): Promise<number> {
+  if (plan.type === "BUNDLE") {
+    return prisma.order.count({
+      where: {
+        planId: plan.id,
+        userId,
+        kind: "NEW_PURCHASE",
+        status: "PAID",
+        subscription: {
+          is: { status: "ACTIVE" },
+        },
+      },
+    });
+  }
+
+  return prisma.userSubscription.count({
+    where: {
+      planId: plan.id,
+      userId,
+      status: "ACTIVE",
+    },
+  });
+}
+
+async function getEarliestBundleOrderExpiry(planId: string, userId?: string): Promise<Date | null> {
+  const orders = await prisma.order.findMany({
     where: {
       planId,
+      ...(userId ? { userId } : {}),
+      kind: "NEW_PURCHASE",
+      status: "PAID",
+      subscription: {
+        is: { status: "ACTIVE" },
+      },
+    },
+    select: {
+      subscription: {
+        select: { endDate: true },
+      },
+    },
+  });
+
+  return orders
+    .map((order) => order.subscription?.endDate ?? null)
+    .filter((date): date is Date => Boolean(date))
+    .sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
+}
+
+async function getEarliestPlanExpiry(plan: PlanAvailabilityInput): Promise<Date | null> {
+  if (plan.type === "BUNDLE") {
+    return getEarliestBundleOrderExpiry(plan.id);
+  }
+
+  const earliest = await prisma.userSubscription.findFirst({
+    where: {
+      planId: plan.id,
       status: "ACTIVE",
     },
     select: { endDate: true },
@@ -55,12 +129,16 @@ async function getEarliestPlanExpiry(planId: string): Promise<Date | null> {
 }
 
 async function getEarliestUserPlanExpiry(
-  planId: string,
+  plan: PlanAvailabilityInput,
   userId: string,
 ): Promise<Date | null> {
+  if (plan.type === "BUNDLE") {
+    return getEarliestBundleOrderExpiry(plan.id, userId);
+  }
+
   const earliest = await prisma.userSubscription.findFirst({
     where: {
-      planId,
+      planId: plan.id,
       userId,
       status: "ACTIVE",
     },
@@ -174,34 +252,23 @@ export async function getPlanAvailability(
   plan: PlanAvailabilityInput,
   options?: { userId?: string },
 ): Promise<PlanAvailability> {
-  const activeCount = await prisma.userSubscription.count({
-    where: {
-      planId: plan.id,
-      status: "ACTIVE",
-    },
-  });
+  const activeCount = await getActivePlanCount(plan);
 
   const totalLimit = plan.totalLimit ?? null;
   const remainingByPlanLimit =
     totalLimit == null ? null : Math.max(0, totalLimit - activeCount);
   const planBlocked = remainingByPlanLimit !== null && remainingByPlanLimit <= 0;
-  const planNextAt = planBlocked ? await getEarliestPlanExpiry(plan.id) : null;
+  const planNextAt = planBlocked ? await getEarliestPlanExpiry(plan) : null;
 
   let remainingByUserLimit: number | null = null;
   let userBlocked = false;
   let userNextAt: Date | null = null;
   if (plan.perUserLimit != null && options?.userId) {
-    const userActiveCount = await prisma.userSubscription.count({
-      where: {
-        planId: plan.id,
-        userId: options.userId,
-        status: "ACTIVE",
-      },
-    });
+    const userActiveCount = await getActiveUserPlanCount(plan, options.userId);
     remainingByUserLimit = Math.max(0, plan.perUserLimit - userActiveCount);
     userBlocked = remainingByUserLimit <= 0;
     if (userBlocked) {
-      userNextAt = await getEarliestUserPlanExpiry(plan.id, options.userId);
+      userNextAt = await getEarliestUserPlanExpiry(plan, options.userId);
     }
   }
 

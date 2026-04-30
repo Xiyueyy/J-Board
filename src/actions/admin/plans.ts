@@ -27,7 +27,7 @@ const optionalBool = z.preprocess((value) => {
 
 const planSchema = z.object({
   name: z.string().min(1),
-  type: z.enum(["STREAMING", "PROXY"]),
+  type: z.enum(["STREAMING", "PROXY", "BUNDLE"]),
   description: z.string().optional(),
   durationDays: z.coerce.number().int().positive(),
   sortOrder: z.coerce.number().int().default(100),
@@ -58,7 +58,106 @@ const planSchema = z.object({
   pricePerGb: optionalNumber,
   minTrafficGb: optionalInt,
   maxTrafficGb: optionalInt,
+  bundleItems: z.string().optional(),
 });
+
+const bundleItemSchema = z.object({
+  planId: z.string().trim().min(1),
+  selectedInboundId: z.string().trim().optional().nullable(),
+  trafficGb: z.coerce.number().int().positive().optional().nullable(),
+  sortOrder: z.coerce.number().int().optional().nullable(),
+});
+
+type BundleItemInput = z.infer<typeof bundleItemSchema>;
+
+function parseBundleItems(raw: string | undefined): BundleItemInput[] {
+  if (!raw?.trim()) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("聚合套餐明细格式错误，请重新选择子套餐");
+  }
+  const result = z.array(bundleItemSchema).parse(parsed);
+  return result.map((item, index) => ({
+    ...item,
+    selectedInboundId: item.selectedInboundId || null,
+    trafficGb: item.trafficGb ?? null,
+    sortOrder: item.sortOrder ?? (index + 1) * 10,
+  }));
+}
+
+async function normalizeBundleItems(items: BundleItemInput[], bundlePlanId?: string) {
+  if (items.length === 0) {
+    throw new Error("聚合套餐必须至少包含一个子套餐");
+  }
+
+  const childPlanIds = Array.from(new Set(items.map((item) => item.planId)));
+  if (bundlePlanId && childPlanIds.includes(bundlePlanId)) {
+    throw new Error("聚合套餐不能包含自己");
+  }
+
+  const plans = await prisma.subscriptionPlan.findMany({
+    where: { id: { in: childPlanIds } },
+    include: {
+      inbound: true,
+      inboundOptions: {
+        include: { inbound: true },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+  const planMap = new Map(plans.map((plan) => [plan.id, plan]));
+
+  return items.map((item, index) => {
+    const plan = planMap.get(item.planId);
+    if (!plan) throw new Error("聚合套餐包含不存在的子套餐");
+    if (!plan.isActive) throw new Error(`${plan.name} 已下架，不能加入聚合套餐`);
+    if (plan.type === "BUNDLE") throw new Error("聚合套餐暂不支持嵌套另一个聚合套餐");
+
+    if (plan.type === "STREAMING") {
+      return {
+        childPlanId: plan.id,
+        selectedInboundId: null,
+        trafficGb: null,
+        sortOrder: item.sortOrder ?? (index + 1) * 10,
+      };
+    }
+
+    const selectableInbounds = plan.inboundOptions.length > 0
+      ? plan.inboundOptions.map((option) => option.inbound).filter((inbound) => inbound.isActive && inbound.serverId === plan.nodeId)
+      : (plan.inbound && plan.inbound.isActive && plan.inbound.serverId === plan.nodeId ? [plan.inbound] : []);
+    if (selectableInbounds.length === 0) {
+      throw new Error(`${plan.name} 没有可用入站，不能加入聚合套餐`);
+    }
+
+    const selectedInboundId = item.selectedInboundId || selectableInbounds[0].id;
+    if (!selectableInbounds.some((inbound) => inbound.id === selectedInboundId)) {
+      throw new Error(`${plan.name} 的入站无效，请重新选择`);
+    }
+
+    const trafficGb = plan.pricingMode === "FIXED_PACKAGE"
+      ? plan.fixedTrafficGb
+      : item.trafficGb;
+    if (!trafficGb || trafficGb <= 0) {
+      throw new Error(`${plan.name} 需要填写打包流量`);
+    }
+    if (plan.pricingMode === "TRAFFIC_SLIDER") {
+      const minTrafficGb = plan.minTrafficGb ?? 1;
+      const maxTrafficGb = plan.maxTrafficGb ?? minTrafficGb;
+      if (trafficGb < minTrafficGb || trafficGb > maxTrafficGb) {
+        throw new Error(`${plan.name} 的打包流量必须在 ${minTrafficGb}-${maxTrafficGb} GB 之间`);
+      }
+    }
+
+    return {
+      childPlanId: plan.id,
+      selectedInboundId,
+      trafficGb,
+      sortOrder: item.sortOrder ?? (index + 1) * 10,
+    };
+  });
+}
 
 function parseInboundIds(raw: string | undefined, fallbackInboundId?: string): string[] {
   const list = (raw ?? "")
@@ -295,7 +394,7 @@ export async function createPlan(formData: FormData) {
       targetLabel: data.name,
       message: `创建代理套餐 ${data.name}`,
     });
-  } else {
+  } else if (data.type === "STREAMING") {
     if (!data.streamingServiceId) {
       throw new Error("流媒体套餐必须绑定一个流媒体服务");
     }
@@ -351,6 +450,58 @@ export async function createPlan(formData: FormData) {
       targetId: plan.id,
       targetLabel: plan.name,
       message: `创建流媒体套餐 ${plan.name}`,
+    });
+  } else {
+    if (data.price == null || data.price <= 0) {
+      throw new Error("聚合套餐必须填写售价，且大于 0");
+    }
+    const bundleItems = await normalizeBundleItems(parseBundleItems(data.bundleItems));
+    const plan = await prisma.subscriptionPlan.create({
+      data: {
+        name: data.name,
+        type: "BUNDLE",
+        description: data.description || null,
+        durationDays: data.durationDays,
+        sortOrder: data.sortOrder,
+        totalLimit: data.totalLimit ?? null,
+        perUserLimit: data.perUserLimit ?? null,
+        totalTrafficGb: null,
+        allowRenewal: false,
+        allowTrafficTopup: false,
+        renewalPrice: null,
+        renewalPricingMode: "FIXED_DURATION",
+        renewalDurationDays: null,
+        renewalMinDays: null,
+        renewalMaxDays: null,
+        renewalTrafficGb: null,
+        topupPricingMode: "PER_GB",
+        topupPricePerGb: null,
+        topupFixedPrice: null,
+        minTopupGb: null,
+        maxTopupGb: null,
+        streamingServiceId: null,
+        categoryId: null,
+        pricingMode: "TRAFFIC_SLIDER",
+        fixedTrafficGb: null,
+        fixedPrice: null,
+        price: data.price,
+        nodeId: null,
+        inboundId: null,
+        pricePerGb: null,
+        minTrafficGb: null,
+        maxTrafficGb: null,
+        bundleItems: {
+          create: bundleItems,
+        },
+      },
+    });
+    await recordAuditLog({
+      actor: actorFromSession(session),
+      action: "plan.create",
+      targetType: "SubscriptionPlan",
+      targetId: plan.id,
+      targetLabel: plan.name,
+      message: `创建聚合套餐 ${plan.name}`,
     });
   }
   revalidatePath("/admin/plans");
@@ -467,7 +618,7 @@ export async function updatePlan(id: string, formData: FormData) {
       targetLabel: data.name,
       message: `更新代理套餐 ${data.name}`,
     });
-  } else {
+  } else if (data.type === "STREAMING") {
     if (!data.streamingServiceId) {
       throw new Error("流媒体套餐必须绑定一个流媒体服务");
     }
@@ -525,6 +676,62 @@ export async function updatePlan(id: string, formData: FormData) {
       targetId: id,
       targetLabel: data.name,
       message: `更新流媒体套餐 ${data.name}`,
+    });
+  } else {
+    if (data.price == null || data.price <= 0) {
+      throw new Error("聚合套餐必须填写售价，且大于 0");
+    }
+    const bundleItems = await normalizeBundleItems(parseBundleItems(data.bundleItems), id);
+    await prisma.$transaction(async (tx) => {
+      await tx.subscriptionPlan.update({
+        where: { id },
+        data: {
+          name: data.name,
+          description: data.description || null,
+          durationDays: data.durationDays,
+          sortOrder: data.sortOrder,
+          totalLimit: data.totalLimit ?? null,
+          perUserLimit: data.perUserLimit ?? null,
+          totalTrafficGb: null,
+          allowRenewal: false,
+          allowTrafficTopup: false,
+          renewalPrice: null,
+          renewalPricingMode: "FIXED_DURATION",
+          renewalDurationDays: null,
+          renewalMinDays: null,
+          renewalMaxDays: null,
+          renewalTrafficGb: null,
+          topupPricingMode: "PER_GB",
+          topupPricePerGb: null,
+          topupFixedPrice: null,
+          minTopupGb: null,
+          maxTopupGb: null,
+          streamingServiceId: null,
+          categoryId: null,
+          pricingMode: "TRAFFIC_SLIDER",
+          fixedTrafficGb: null,
+          fixedPrice: null,
+          price: data.price,
+          nodeId: null,
+          inboundId: null,
+          pricePerGb: null,
+          minTrafficGb: null,
+          maxTrafficGb: null,
+        },
+      });
+      await tx.planBundleItem.deleteMany({ where: { bundlePlanId: id } });
+      await tx.planBundleItem.createMany({
+        data: bundleItems.map((item) => ({ bundlePlanId: id, ...item })),
+      });
+      await tx.planInboundOption.deleteMany({ where: { planId: id } });
+    });
+    await recordAuditLog({
+      actor: actorFromSession(session),
+      action: "plan.update",
+      targetType: "SubscriptionPlan",
+      targetId: id,
+      targetLabel: data.name,
+      message: `更新聚合套餐 ${data.name}`,
     });
   }
   revalidatePath("/admin/plans");

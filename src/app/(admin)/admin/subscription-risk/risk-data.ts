@@ -20,7 +20,7 @@ type RiskSubscription = {
   endDate: Date;
   plan: {
     name: string;
-    type: "PROXY" | "STREAMING";
+    type: "PROXY" | "STREAMING" | "BUNDLE";
   };
   user: RiskUser;
 };

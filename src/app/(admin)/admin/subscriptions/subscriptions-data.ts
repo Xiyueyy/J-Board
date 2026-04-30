@@ -36,7 +36,7 @@ export async function getAdminSubscriptions(
 
   const where = {
     ...(status ? { status: status as "ACTIVE" | "EXPIRED" | "CANCELLED" | "SUSPENDED" } : {}),
-    ...(type ? { plan: { type: type as "PROXY" | "STREAMING" } } : {}),
+    ...(type ? { plan: { type: type as "PROXY" | "STREAMING" | "BUNDLE" } } : {}),
     ...(q
       ? {
           OR: [

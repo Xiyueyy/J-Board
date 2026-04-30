@@ -24,6 +24,7 @@ export default async function PlansPage({
     filters,
     activeCountMap,
     serviceOptions,
+    bundleCandidates,
   } = await getAdminPlans(await searchParams);
 
   return (
@@ -31,7 +32,7 @@ export default async function PlansPage({
       <PageHeader
         eyebrow="商品与订单"
         title="套餐管理"
-        actions={<PlanForm services={serviceOptions} />}
+        actions={<PlanForm services={serviceOptions} bundleCandidates={bundleCandidates} />}
       />
       <AdminFilterBar
         q={filters.q}
@@ -44,6 +45,7 @@ export default async function PlansPage({
               { label: "全部类型", value: "" },
               { label: "代理套餐", value: "PROXY" },
               { label: "流媒体套餐", value: "STREAMING" },
+              { label: "聚合套餐", value: "BUNDLE" },
             ],
           },
           {
@@ -61,6 +63,7 @@ export default async function PlansPage({
         plans={plans}
         activeCountMap={activeCountMap}
         services={serviceOptions}
+        bundleCandidates={bundleCandidates}
       />
       <Pagination total={total} pageSize={pageSize} page={page} />
     </PageShell>

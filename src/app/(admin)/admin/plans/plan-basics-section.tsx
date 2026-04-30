@@ -20,6 +20,12 @@ import type {
 
 type FieldId = (name: string) => string;
 
+function planTypeLabel(type: PlanType) {
+  if (type === "PROXY") return "代理节点套餐";
+  if (type === "STREAMING") return "流媒体套餐";
+  return "聚合套餐";
+}
+
 interface PlanBasicsFieldsProps {
   fieldId: FieldId;
   isEdit: boolean;
@@ -55,7 +61,7 @@ export function PlanBasicsFields({
         <Label htmlFor={fieldId("type")}>套餐类型</Label>
         {isEdit ? (
           <div id={fieldId("type")} className="premium-input flex h-11 items-center px-3 text-sm font-medium">
-            {type === "PROXY" ? "代理节点套餐" : "流媒体套餐"}
+            {planTypeLabel(type)}
           </div>
         ) : (
           <Select
@@ -75,12 +81,13 @@ export function PlanBasicsFields({
           >
             <SelectTrigger id={fieldId("type")}>
               <SelectValue placeholder="选择类型">
-                {(value) => value === "PROXY" ? "代理节点套餐" : "流媒体套餐"}
+                {(value) => planTypeLabel(value as PlanType)}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="PROXY">代理节点套餐</SelectItem>
               <SelectItem value="STREAMING">流媒体套餐</SelectItem>
+              <SelectItem value="BUNDLE">聚合套餐</SelectItem>
             </SelectContent>
           </Select>
         )}

@@ -27,7 +27,7 @@ interface TopupConfig {
 
 interface Props {
   subscriptionId: string;
-  type: "PROXY" | "STREAMING";
+  type: "PROXY" | "STREAMING" | "BUNDLE";
   allowRenewal: boolean;
   allowTrafficTopup: boolean;
   trafficPoolRemainingGb: number | null;

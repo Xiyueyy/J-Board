@@ -6,6 +6,7 @@ import {
 import { normalizeTraceText } from "@/lib/trace-normalize";
 import type { ProxyPlan } from "./proxy-plan-types";
 import type { StreamingPlan } from "./streaming-plan-types";
+import type { BundlePlan } from "./bundle-plan-types";
 
 export type StorePlanRecord = Prisma.SubscriptionPlanGetPayload<{
   include: {
@@ -14,6 +15,21 @@ export type StorePlanRecord = Prisma.SubscriptionPlanGetPayload<{
     streamingService: true;
     inboundOptions: {
       include: { inbound: true };
+    };
+    bundleItems: {
+      include: {
+        childPlan: {
+          include: {
+            node: true;
+            inbound: true;
+            streamingService: true;
+            inboundOptions: {
+              include: { inbound: true };
+            };
+          };
+        };
+        selectedInbound: true;
+      };
     };
   };
 }>;
@@ -24,6 +40,10 @@ export function getProxyPlans(plans: StorePlanRecord[]) {
 
 export function getStreamingPlans(plans: StorePlanRecord[]) {
   return plans.filter((plan) => plan.type === "STREAMING");
+}
+
+export function getBundlePlans(plans: StorePlanRecord[]) {
+  return plans.filter((plan) => plan.type === "BUNDLE");
 }
 
 export function getProxyNodeIds(plans: StorePlanRecord[]) {
@@ -84,6 +104,43 @@ export function toStreamingPlanCard(
     perUserLimit: plan.perUserLimit,
     activeCount: availability?.activeCount ?? 0,
     remainingCount: getStreamingRemainingCount(availability),
+    remainingByUserLimit: availability?.remainingByUserLimit ?? null,
+    isAvailable: availability?.available ?? true,
+    nextAvailableAt: formatNextAvailableAt(availability),
+  };
+}
+
+export function toBundlePlanCard(
+  plan: StorePlanRecord,
+  availability?: PlanAvailability,
+): BundlePlan {
+  return {
+    id: plan.id,
+    name: normalizeTraceText(plan.name),
+    description: plan.description ? normalizeTraceText(plan.description) : null,
+    sortOrder: plan.sortOrder,
+    durationDays: plan.durationDays,
+    price: Number(plan.price ?? 0),
+    items: plan.bundleItems.map((item) => ({
+      id: item.id,
+      name: normalizeTraceText(item.childPlan.name),
+      type: item.childPlan.type === "PROXY" ? "PROXY" : "STREAMING",
+      durationDays: item.childPlan.durationDays,
+      trafficGb: item.trafficGb,
+      nodeName: item.childPlan.node?.name ? normalizeTraceText(item.childPlan.node.name) : null,
+      serviceName: item.childPlan.streamingService?.name
+        ? normalizeTraceText(item.childPlan.streamingService.name)
+        : null,
+      inboundName: item.selectedInbound
+        ? getInboundDisplayName(item.selectedInbound)
+        : item.childPlan.inbound
+          ? getInboundDisplayName(item.childPlan.inbound)
+          : null,
+    })),
+    totalLimit: plan.totalLimit,
+    perUserLimit: plan.perUserLimit,
+    activeCount: availability?.activeCount ?? 0,
+    remainingCount: availability?.remainingByPlanLimit ?? null,
     remainingByUserLimit: availability?.remainingByUserLimit ?? null,
     isAvailable: availability?.available ?? true,
     nextAvailableAt: formatNextAvailableAt(availability),

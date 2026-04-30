@@ -32,9 +32,11 @@ export async function POST(req: Request) {
       return jsonError("未登录", { status: 401 });
     }
 
-    const restriction = await getActiveSubscriptionRiskRestriction(session.user.id);
-    if (restriction) {
-      return jsonError("账户存在未处理的订阅风控限制，请先新建工单联系客服", { status: 403 });
+    if (session.user.role !== "ADMIN") {
+      const restriction = await getActiveSubscriptionRiskRestriction(session.user.id);
+      if (restriction) {
+        return jsonError("账户存在未处理的订阅风控限制，请先新建工单联系客服", { status: 403 });
+      }
     }
 
     const { success, remaining } = await rateLimit(

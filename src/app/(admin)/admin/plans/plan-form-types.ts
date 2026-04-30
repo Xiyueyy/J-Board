@@ -1,4 +1,4 @@
-export type PlanType = "STREAMING" | "PROXY";
+export type PlanType = "STREAMING" | "PROXY" | "BUNDLE";
 export type PlanPricingMode = "TRAFFIC_SLIDER" | "FIXED_PACKAGE";
 
 export interface NodeOption {
@@ -11,6 +11,33 @@ export interface InboundOption {
   protocol: "VMESS" | "VLESS" | "TROJAN" | "SHADOWSOCKS" | "HYSTERIA2";
   port: number;
   tag: string;
+}
+
+
+export interface BundlePlanCandidateInbound {
+  id: string;
+  protocol: "VMESS" | "VLESS" | "TROJAN" | "SHADOWSOCKS" | "HYSTERIA2";
+  port: number;
+  tag: string;
+  displayName: string;
+}
+
+export interface BundlePlanCandidate {
+  id: string;
+  name: string;
+  type: Exclude<PlanType, "BUNDLE">;
+  pricingMode: PlanPricingMode;
+  fixedTrafficGb: number | null;
+  minTrafficGb: number | null;
+  maxTrafficGb: number | null;
+  inbounds: BundlePlanCandidateInbound[];
+}
+
+export interface BundlePlanFormItem {
+  planId: string;
+  selectedInboundId: string | null;
+  trafficGb: number | null;
+  sortOrder: number;
 }
 
 export interface PlanFormValue {
@@ -47,6 +74,7 @@ export interface PlanFormValue {
   pricePerGb: number | null;
   minTrafficGb: number | null;
   maxTrafficGb: number | null;
+  bundleItems: BundlePlanFormItem[];
 }
 
 export interface StreamingServiceOption {

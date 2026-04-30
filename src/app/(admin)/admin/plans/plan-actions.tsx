@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { getErrorMessage } from "@/lib/errors";
 import {
   PlanForm,
+  type BundlePlanCandidate,
   type PlanFormValue,
   type StreamingServiceOption,
 } from "./plan-form";
@@ -16,10 +17,12 @@ export function PlanActions({
   plan,
   isActive,
   services,
+  bundleCandidates,
 }: {
   plan: PlanFormValue;
   isActive: boolean;
   services: StreamingServiceOption[];
+  bundleCandidates: BundlePlanCandidate[];
 }) {
   const router = useRouter();
 
@@ -28,6 +31,7 @@ export function PlanActions({
       <PlanForm
         plan={plan}
         services={services}
+        bundleCandidates={bundleCandidates}
         triggerLabel="编辑"
         triggerVariant="outline"
       />

@@ -42,6 +42,7 @@ export const subscriptionStatusLabels: Record<SubscriptionStatus, string> = {
 export const subscriptionTypeLabels: Record<SubscriptionType, string> = {
   PROXY: "代理",
   STREAMING: "流媒体",
+  BUNDLE: "聚合",
 };
 
 export const userRoleLabels: Record<Role, string> = {
@@ -100,7 +101,9 @@ export function getSubscriptionStatusTone(status: SubscriptionStatus): StatusTon
 }
 
 export function getSubscriptionTypeTone(type: SubscriptionType): StatusTone {
-  return type === "PROXY" ? "info" : "warning";
+  if (type === "PROXY") return "info";
+  if (type === "BUNDLE") return "success";
+  return "warning";
 }
 
 export function getUserStatusTone(status: UserStatus): StatusTone {
