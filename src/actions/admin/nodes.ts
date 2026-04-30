@@ -197,8 +197,28 @@ export async function deleteInbound(id: string) {
   const session = await requireAdmin();
   const inbound = await prisma.nodeInbound.findUniqueOrThrow({
     where: { id },
-    include: { server: true },
+    include: {
+      server: true,
+      _count: {
+        select: {
+          clients: true,
+          plans: true,
+          planOptions: true,
+          bundleItems: true,
+        },
+      },
+    },
   });
+
+  const referenceCount = inbound._count.clients
+    + inbound._count.plans
+    + inbound._count.planOptions
+    + inbound._count.bundleItems;
+  if (referenceCount > 0) {
+    throw new Error(
+      `这个入站仍被 ${referenceCount} 个套餐或客户端引用，不能直接删除。请先修改相关套餐入站并保存，等待系统迁移已订阅用户后再删除。`,
+    );
+  }
 
   await prisma.nodeInbound.delete({ where: { id } });
   await recordAuditLog({

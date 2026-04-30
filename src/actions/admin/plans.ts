@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { actorFromSession, recordAuditLog } from "@/services/audit";
+import { reconcileProxyPlanSubscriptions } from "@/services/proxy-client-reconcile";
 import { deleteSubscriptionPermanently } from "./subscriptions";
 
 const optionalNumber = z.preprocess(
@@ -524,6 +525,8 @@ export async function createPlan(formData: FormData) {
     });
   }
   revalidatePath("/admin/plans");
+  revalidatePath("/admin/subscriptions");
+  revalidatePath("/admin/online-users");
   revalidatePath("/store");
 }
 
@@ -630,6 +633,7 @@ export async function updatePlan(id: string, formData: FormData) {
         data: inboundIds.map((inboundId) => ({ planId: id, inboundId })),
       });
     });
+    const reconcileResult = await reconcileProxyPlanSubscriptions({ planId: id, nodeId, inboundIds });
     await recordAuditLog({
       actor: actorFromSession(session),
       action: "plan.update",
@@ -637,6 +641,21 @@ export async function updatePlan(id: string, formData: FormData) {
       targetId: id,
       targetLabel: data.name,
       message: `更新代理套餐 ${data.name}`,
+      metadata: {
+        proxyClientReconcile: {
+          checked: reconcileResult.checked,
+          repaired: reconcileResult.repaired,
+          migrated: reconcileResult.migrated,
+          kept: reconcileResult.kept,
+          skipped: reconcileResult.skipped,
+          failed: reconcileResult.failed,
+          affectedNodeIds: reconcileResult.affectedNodeIds,
+          errors: reconcileResult.errors.map((error) => ({
+            subscriptionId: error.subscriptionId,
+            message: error.message,
+          })),
+        },
+      },
     });
   } else if (data.type === "STREAMING") {
     if (data.price != null && data.price < 0) {
@@ -760,6 +779,8 @@ export async function updatePlan(id: string, formData: FormData) {
     });
   }
   revalidatePath("/admin/plans");
+  revalidatePath("/admin/subscriptions");
+  revalidatePath("/admin/online-users");
   revalidatePath("/store");
 }
 
