@@ -6,7 +6,7 @@ import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export function NodesAutoRefresh({ intervalSeconds = 10 }: { intervalSeconds?: number }) {
+export function NodesAutoRefresh({ intervalSeconds = 3 }: { intervalSeconds?: number }) {
   const router = useRouter();
   const [secondsLeft, setSecondsLeft] = useState(intervalSeconds);
   const [isPending, startTransition] = useTransition();

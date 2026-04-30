@@ -88,7 +88,7 @@ journalctl -u jboard-agent -n 30 --no-pager
 | `AUTH_TOKEN` | 必填 | 后台节点页生成的 Agent Token。 |
 | `LATENCY_INTERVAL` | `5m` | 延迟探测间隔，支持 `30s`、`5m` 或纯秒数。 |
 | `TRACE_INTERVAL` | `30m` | 路由探测间隔，支持 `30m` 或纯秒数。 |
-| `NET_SPEED_INTERVAL` | `10s` | 整机网卡速度采样和上报间隔。 |
+| `NET_SPEED_INTERVAL` | `3s` | 整机网卡速度采样和上报间隔。 |
 | `NET_SPEED_INTERFACE` | 自动选择 | 指定采样网卡，例如 `eth0`；为空时自动汇总常见公网网卡。 |
 | `XRAY_ACCESS_LOG_PATH` | 自动探测 | Xray access log 路径。为空时节点真实连接风控禁用。 |
 | `XRAY_LOG_INTERVAL` | `1m` | access log 读取、聚合、上报间隔。 |

@@ -26,7 +26,7 @@ export default async function NodesPage({
         title="节点管理"
         actions={(
           <div className="flex flex-wrap gap-2">
-            <NodesAutoRefresh intervalSeconds={10} />
+            <NodesAutoRefresh intervalSeconds={3} />
             <NodeForm />
           </div>
         )}

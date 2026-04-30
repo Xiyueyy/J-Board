@@ -29,7 +29,7 @@ func Load() *Config {
 		AuthToken:         envOrDefault("AUTH_TOKEN", ""),
 		LatencyInterval:   envDuration("LATENCY_INTERVAL", 5*time.Minute),
 		TraceInterval:     envDuration("TRACE_INTERVAL", 30*time.Minute),
-		NetSpeedInterval:  envDuration("NET_SPEED_INTERVAL", 10*time.Second),
+		NetSpeedInterval:  envDuration("NET_SPEED_INTERVAL", 3*time.Second),
 		NetSpeedInterface: envOrDefault("NET_SPEED_INTERFACE", ""),
 		XrayAccessLogPath: envOrDefault("XRAY_ACCESS_LOG_PATH", ""),
 		XrayLogStateFile:  envOrDefault("XRAY_LOG_STATE_FILE", "/var/lib/jboard-agent/xray-log-state.json"),
