@@ -134,14 +134,17 @@ function getOrderPricing(amount: number, role: string) {
   };
 }
 
-async function autoConfirmAdminOrder(orderId: string, role: string) {
-  if (role !== "ADMIN") return;
+async function autoConfirmFreeOrder(orderId: string, role: string, amount: number) {
+  const isAdmin = role === "ADMIN";
+  const isFree = roundMoney(amount) <= 0;
+  if (!isAdmin && !isFree) return;
 
+  const label = isAdmin ? "管理员免费开通" : "免费套餐开通";
   const result = await confirmPendingOrder(orderId);
   if (result.finalStatus !== "PAID") {
     throw new Error(result.errorMessage
-      ? `管理员免费开通失败：${result.errorMessage}`
-      : "管理员免费开通失败，请到订单页查看详情");
+      ? `${label}失败：${result.errorMessage}`
+      : `${label}失败，请到订单页查看详情`);
   }
 }
 
@@ -149,8 +152,8 @@ type BundlePlanForPurchase = Awaited<ReturnType<typeof getBundlePlanForPurchase>
 
 function getBundlePriceAmount(plan: { price: unknown; name: string }) {
   const amount = roundMoney(Number(plan.price ?? 0));
-  if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error(`${plan.name} 暂未设置有效售价`);
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw new Error(`${plan.name} 售价设置无效`);
   }
   return amount;
 }
@@ -369,7 +372,7 @@ export async function purchaseProxy(
     },
   });
 
-  await autoConfirmAdminOrder(order.id, session.user.role);
+  await autoConfirmFreeOrder(order.id, session.user.role, orderPricing.amount);
   return order.id;
 }
 
@@ -413,7 +416,7 @@ export async function purchaseStreaming(planId: string): Promise<string> {
     },
   });
 
-  await autoConfirmAdminOrder(order.id, session.user.role);
+  await autoConfirmFreeOrder(order.id, session.user.role, orderPricing.amount);
   return order.id;
 }
 
@@ -442,7 +445,7 @@ export async function purchaseBundle(planId: string): Promise<string> {
     },
   });
 
-  await autoConfirmAdminOrder(order.id, session.user.role);
+  await autoConfirmFreeOrder(order.id, session.user.role, orderPricing.amount);
   return order.id;
 }
 

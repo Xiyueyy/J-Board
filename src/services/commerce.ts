@@ -56,8 +56,8 @@ export function getPlanPurchasePrice(
     if (!plan.fixedTrafficGb || plan.fixedTrafficGb <= 0) {
       throw new Error("这款套餐暂时缺少固定流量设置");
     }
-    if (!plan.fixedPrice || Number(plan.fixedPrice) <= 0) {
-      throw new Error("这款套餐暂时缺少固定价格设置");
+    if (plan.fixedPrice == null || Number(plan.fixedPrice) < 0) {
+      throw new Error("这款套餐暂时缺少有效固定价格设置");
     }
     const amount = roundMoney(Number(plan.fixedPrice));
     return {
@@ -68,8 +68,8 @@ export function getPlanPurchasePrice(
     };
   }
 
-  if (!plan.pricePerGb || Number(plan.pricePerGb) <= 0) {
-    throw new Error("这款套餐暂时缺少价格设置");
+  if (plan.pricePerGb == null || Number(plan.pricePerGb) < 0) {
+    throw new Error("这款套餐暂时缺少有效价格设置");
   }
 
   const min = plan.minTrafficGb ?? 10;

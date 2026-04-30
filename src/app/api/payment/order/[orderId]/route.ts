@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getActiveSession } from "@/lib/require-auth";
 import { jsonError, jsonOk } from "@/lib/api-response";
+import { confirmPendingOrder } from "@/services/payment/process";
 
 export async function GET(
   _req: Request,
@@ -23,6 +24,7 @@ export async function GET(
       paymentUrl: true,
       expireAt: true,
       note: true,
+      amount: true,
     },
   });
 
@@ -30,13 +32,32 @@ export async function GET(
     return jsonError("订单不存在", { status: 404 });
   }
 
+  let snapshot = order;
+  if (order.status === "PENDING" && Number(order.amount) <= 0) {
+    await confirmPendingOrder(order.id);
+    snapshot = await prisma.order.findUniqueOrThrow({
+      where: { id: order.id },
+      select: {
+        id: true,
+        userId: true,
+        status: true,
+        paymentMethod: true,
+        tradeNo: true,
+        paymentUrl: true,
+        expireAt: true,
+        note: true,
+        amount: true,
+      },
+    });
+  }
+
   return jsonOk({
-    orderId: order.id,
-    status: order.status,
-    paymentMethod: order.paymentMethod,
-    tradeNo: order.tradeNo,
-    paymentUrl: order.paymentUrl,
-    expireAt: order.expireAt?.toISOString() ?? null,
-    note: order.note,
+    orderId: snapshot.id,
+    status: snapshot.status,
+    paymentMethod: snapshot.paymentMethod,
+    tradeNo: snapshot.tradeNo,
+    paymentUrl: snapshot.paymentUrl,
+    expireAt: snapshot.expireAt?.toISOString() ?? null,
+    note: snapshot.note,
   });
 }

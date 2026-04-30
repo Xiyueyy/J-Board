@@ -149,8 +149,9 @@ export function ProxyPricingFields({
               name="pricePerGb"
               type="number"
               step="0.01"
+              min={0}
               defaultValue={plan?.pricePerGb ?? ""}
-              placeholder="例如 0.5"
+              placeholder="例如 0.5，免费填 0"
             />
           </div>
           <div>
@@ -194,9 +195,9 @@ export function ProxyPricingFields({
               name="fixedPrice"
               type="number"
               step="0.01"
-              min={0.01}
+              min={0}
               defaultValue={plan?.fixedPrice ?? ""}
-              placeholder="例如 29.9"
+              placeholder="例如 29.9，免费填 0"
             />
           </div>
         </div>

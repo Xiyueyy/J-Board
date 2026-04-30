@@ -132,7 +132,7 @@ export function BundleConfigSection({
           defaultValue={plan?.price ?? ""}
         />
         <p className="mt-1 text-xs text-muted-foreground">
-          管理员自己购买会自动免费开通，普通用户按这里的售价支付。
+          填 0 可作为免费聚合套餐，用户下单后会自动开通；管理员购买始终免费开通。
         </p>
       </div>
 

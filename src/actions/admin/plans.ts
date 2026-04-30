@@ -192,12 +192,12 @@ function assertProxyPricing(data: z.infer<typeof planSchema>) {
     if (data.fixedTrafficGb == null || data.fixedTrafficGb <= 0) {
       throw new Error("固定流量套餐必须填写固定流量");
     }
-    if (data.fixedPrice == null || data.fixedPrice <= 0) {
-      throw new Error("固定流量套餐必须填写固定价格");
+    if (data.fixedPrice == null || data.fixedPrice < 0) {
+      throw new Error("固定流量套餐必须填写固定价格，且不能小于 0");
     }
   } else {
-    if (data.pricePerGb == null || data.pricePerGb <= 0) {
-      throw new Error("自选流量套餐必须填写每 GB 价格");
+    if (data.pricePerGb == null || data.pricePerGb < 0) {
+      throw new Error("自选流量套餐必须填写每 GB 价格，且不能小于 0");
     }
     if (data.minTrafficGb == null || data.minTrafficGb <= 0) {
       throw new Error("自选流量套餐必须填写最小流量");
@@ -409,6 +409,9 @@ export async function createPlan(formData: FormData) {
       message: `创建代理套餐 ${data.name}`,
     });
   } else if (data.type === "STREAMING") {
+    if (data.price != null && data.price < 0) {
+      throw new Error("流媒体套餐价格不能小于 0");
+    }
     if (!data.streamingServiceId) {
       throw new Error("流媒体套餐必须绑定一个流媒体服务");
     }
@@ -467,8 +470,8 @@ export async function createPlan(formData: FormData) {
       message: `创建流媒体套餐 ${plan.name}`,
     });
   } else {
-    if (data.price == null || data.price <= 0) {
-      throw new Error("聚合套餐必须填写售价，且大于 0");
+    if (data.price == null || data.price < 0) {
+      throw new Error("聚合套餐必须填写售价，且不能小于 0");
     }
     const bundleItems = await normalizeBundleItems(parseBundleItems(data.bundleItems));
     const plan = await prisma.subscriptionPlan.create({
@@ -500,7 +503,7 @@ export async function createPlan(formData: FormData) {
         pricingMode: "TRAFFIC_SLIDER",
         fixedTrafficGb: null,
         fixedPrice: null,
-        price: data.price,
+        price: data.price ?? 0,
         nodeId: null,
         inboundId: null,
         pricePerGb: null,
@@ -636,6 +639,9 @@ export async function updatePlan(id: string, formData: FormData) {
       message: `更新代理套餐 ${data.name}`,
     });
   } else if (data.type === "STREAMING") {
+    if (data.price != null && data.price < 0) {
+      throw new Error("流媒体套餐价格不能小于 0");
+    }
     if (!data.streamingServiceId) {
       throw new Error("流媒体套餐必须绑定一个流媒体服务");
     }
@@ -677,7 +683,7 @@ export async function updatePlan(id: string, formData: FormData) {
         pricingMode: "TRAFFIC_SLIDER",
         fixedTrafficGb: null,
         fixedPrice: null,
-        price: data.price,
+        price: data.price ?? 0,
         nodeId: null,
         inboundId: null,
         pricePerGb: null,
@@ -696,8 +702,8 @@ export async function updatePlan(id: string, formData: FormData) {
       message: `更新流媒体套餐 ${data.name}`,
     });
   } else {
-    if (data.price == null || data.price <= 0) {
-      throw new Error("聚合套餐必须填写售价，且大于 0");
+    if (data.price == null || data.price < 0) {
+      throw new Error("聚合套餐必须填写售价，且不能小于 0");
     }
     const bundleItems = await normalizeBundleItems(parseBundleItems(data.bundleItems), id);
     await prisma.$transaction(async (tx) => {

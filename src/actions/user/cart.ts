@@ -81,15 +81,18 @@ async function getCheckoutPricing({
   };
 }
 
-async function autoConfirmAdminOrder(orderId: string, role: string) {
-  if (role !== "ADMIN") return;
+async function autoConfirmFreeOrder(orderId: string, role: string, amount: number) {
+  const isAdmin = role === "ADMIN";
+  const isFree = roundMoney(amount) <= 0;
+  if (!isAdmin && !isFree) return;
 
+  const label = isAdmin ? "管理员免费开通" : "免费订单开通";
   const result = await confirmPendingOrder(orderId);
   if (result.finalStatus !== "PAID") {
     throw new Error(
       result.errorMessage
-        ? `管理员免费开通失败：${result.errorMessage}`
-        : "管理员免费开通失败，请到订单页查看详情",
+        ? `${label}失败：${result.errorMessage}`
+        : `${label}失败，请到订单页查看详情`,
     );
   }
 }
@@ -554,8 +557,6 @@ export async function checkoutCart(
       });
     } else {
       const price = getPlanPurchasePrice(item.plan);
-      if (price.amount <= 0)
-        throw new Error(`${item.plan.name} 暂未设置有效售价`);
       subtotal += price.amount;
 
       const {
@@ -617,7 +618,7 @@ export async function checkoutCart(
     return created;
   });
 
-  await autoConfirmAdminOrder(order.id, session.user.role);
+  await autoConfirmFreeOrder(order.id, session.user.role, checkoutPricing.amount);
 
   revalidatePath("/cart");
   revalidatePath("/store");
