@@ -233,10 +233,16 @@ export async function getOnlineUsersPageData(
     onlineSourceIpsByUserId.set(log.userId, ips);
   }
 
+  const onlineTrafficClientIdsByUserId = new Map<string, Set<string>>();
   const latestTrafficByUserId = new Map<string, { timestamp: Date; client: NodeClientWithNode }>();
   for (const log of latestTrafficLogs) {
     const client = nodeClientMap.get(log.clientId);
     if (!client) continue;
+    if (log.timestamp >= onlineWindowStart) {
+      const clientIds = onlineTrafficClientIdsByUserId.get(client.userId) ?? new Set<string>();
+      clientIds.add(log.clientId);
+      onlineTrafficClientIdsByUserId.set(client.userId, clientIds);
+    }
     const previous = latestTrafficByUserId.get(client.userId);
     if (!previous || log.timestamp > previous.timestamp) {
       latestTrafficByUserId.set(client.userId, { timestamp: log.timestamp, client });
@@ -270,6 +276,12 @@ export async function getOnlineUsersPageData(
       return clientId ? sum + (monthlyUsageByClientId.get(clientId) ?? BigInt(0)) : sum;
     }, BigInt(0));
 
+    const onlineSourceCount = Math.max(
+      onlineSourceIpsByUserId.get(user.id)?.size ?? 0,
+      onlineTrafficClientIdsByUserId.get(user.id)?.size ?? 0,
+      lastActiveAt && now.getTime() - lastActiveAt.getTime() <= ONLINE_WINDOW_MS ? 1 : 0,
+    );
+
     return {
       id: user.id,
       email: user.email,
@@ -277,7 +289,7 @@ export async function getOnlineUsersPageData(
       userStatus: user.status,
       onlineState: getOnlineState(user, lastActiveAt, now),
       activeSubscriptionCount: user.subscriptions.length,
-      onlineSourceCount: onlineSourceIpsByUserId.get(user.id)?.size ?? 0,
+      onlineSourceCount,
       lastNodeName: nodeName,
       lastInboundName: inboundName,
       lastActiveAt,

@@ -130,7 +130,7 @@ export function OnlineUsersTable({ users }: OnlineUsersTableProps) {
               </DataTableCell>
               <DataTableCell className="tabular-nums">
                 {user.onlineSourceCount > 0 ? (
-                  <span className="inline-flex items-center gap-1.5" title="近 2 分钟不同来源数量">
+                  <span className="inline-flex items-center gap-1.5" title="近 2 分钟活跃数量估算">
                     <Users className="size-3.5 text-muted-foreground" />
                     {user.onlineSourceCount} 个
                   </span>
