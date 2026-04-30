@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-GH_REPO="${GH_REPO:-JetSprow/J-Board}"
+GH_REPO="${GH_REPO:-Xiyueyy/J-Board}"
 AGENT_TAG="${AGENT_TAG:-latest}"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 SERVICE_NAME="${SERVICE_NAME:-jboard-agent}"
@@ -12,6 +12,9 @@ XRAY_LOG_STATE_FILE="${XRAY_LOG_STATE_FILE:-/var/lib/jboard-agent/xray-log-state
 XRAY_LOG_START_AT_END="${XRAY_LOG_START_AT_END:-1}"
 NET_SPEED_INTERVAL="${NET_SPEED_INTERVAL:-10s}"
 NET_SPEED_INTERFACE="${NET_SPEED_INTERFACE:-}"
+BUILD_FROM_SOURCE="${BUILD_FROM_SOURCE:-auto}"
+AGENT_REF="${AGENT_REF:-main}"
+GO_VERSION="${GO_VERSION:-1.22.12}"
 TMP_DIR="$(mktemp -d)"
 ARCH="$(uname -m)"
 
@@ -54,6 +57,57 @@ detect_asset() {
       exit 1
       ;;
   esac
+}
+
+
+detect_goarch() {
+  case "$ARCH" in
+    x86_64|amd64)
+      echo "amd64"
+      ;;
+    aarch64|arm64)
+      echo "arm64"
+      ;;
+    *)
+      echo "Unsupported architecture: $ARCH" >&2
+      exit 1
+      ;;
+  esac
+}
+
+ensure_go() {
+  if command -v go >/dev/null 2>&1; then
+    command -v go
+    return 0
+  fi
+
+  local goarch=""
+  goarch="$(detect_goarch)"
+  echo "Go not found; downloading Go ${GO_VERSION} for linux-${goarch}..." >&2
+  curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${goarch}.tar.gz" -o "$TMP_DIR/go.tgz"
+  tar -C "$TMP_DIR" -xzf "$TMP_DIR/go.tgz"
+  echo "$TMP_DIR/go/bin/go"
+}
+
+build_agent_from_source() {
+  local source_ref="$AGENT_REF"
+  local goarch=""
+  local go_bin=""
+  if [ "$AGENT_TAG" != "latest" ]; then
+    source_ref="$AGENT_TAG"
+  fi
+
+  goarch="$(detect_goarch)"
+  go_bin="$(ensure_go)"
+
+  echo "Building probe agent from ${GH_REPO}@${source_ref}..."
+  mkdir -p "$TMP_DIR/source"
+  curl -fsSL "https://codeload.github.com/${GH_REPO}/tar.gz/${source_ref}" -o "$TMP_DIR/source.tgz"
+  tar -C "$TMP_DIR/source" --strip-components=1 -xzf "$TMP_DIR/source.tgz"
+  (
+    cd "$TMP_DIR/source/agent/jboard-agent"
+    GOOS=linux GOARCH="$goarch" "$go_bin" build -ldflags "-s -w" -o "$TMP_DIR/$ASSET" ./cmd/agent
+  )
 }
 
 resolve_release_tag() {
@@ -255,34 +309,51 @@ SERVICE
 }
 
 ASSET="$(detect_asset)"
-RESOLVED_TAG="$(resolve_release_tag)"
+DOWNLOADED_RELEASE=0
 
-if [ -z "$RESOLVED_TAG" ]; then
-  echo "Failed to resolve release tag for ${GH_REPO}" >&2
-  exit 1
-fi
-
-DOWNLOAD_BASE="https://github.com/${GH_REPO}/releases/download/${RESOLVED_TAG}"
-DOWNLOAD_URL="${DOWNLOAD_BASE}/${ASSET}"
-CHECKSUM_URL="${DOWNLOAD_BASE}/SHA256SUMS"
-
-echo "[1/7] Release tag: ${RESOLVED_TAG}"
-echo "[2/7] Downloading probe agent binary: ${ASSET}"
-curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/$ASSET"
-
-if curl -fsSL "$CHECKSUM_URL" -o "$TMP_DIR/SHA256SUMS" 2>/dev/null; then
-  echo "[3/7] Verifying checksum..."
-  grep "  ${ASSET}$" "$TMP_DIR/SHA256SUMS" > "$TMP_DIR/SHA256SUMS.current"
-  (
-    cd "$TMP_DIR"
-    if command -v sha256sum >/dev/null 2>&1; then
-      sha256sum -c SHA256SUMS.current >/dev/null
-    else
-      shasum -a 256 -c SHA256SUMS.current >/dev/null
-    fi
-  )
+if [ "$BUILD_FROM_SOURCE" = "1" ] || [ "$BUILD_FROM_SOURCE" = "true" ]; then
+  echo "[1/7] Building from source is forced."
+  build_agent_from_source
 else
-  echo "[3/7] Checksum file not found; skipping verification."
+  RESOLVED_TAG="$(resolve_release_tag || true)"
+  if [ -n "$RESOLVED_TAG" ]; then
+    DOWNLOAD_BASE="https://github.com/${GH_REPO}/releases/download/${RESOLVED_TAG}"
+    DOWNLOAD_URL="${DOWNLOAD_BASE}/${ASSET}"
+    CHECKSUM_URL="${DOWNLOAD_BASE}/SHA256SUMS"
+
+    echo "[1/7] Release tag: ${RESOLVED_TAG} (${GH_REPO})"
+    echo "[2/7] Downloading probe agent binary: ${ASSET}"
+    if curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/$ASSET"; then
+      DOWNLOADED_RELEASE=1
+      if curl -fsSL "$CHECKSUM_URL" -o "$TMP_DIR/SHA256SUMS" 2>/dev/null; then
+        echo "[3/7] Verifying checksum..."
+        grep "  ${ASSET}$" "$TMP_DIR/SHA256SUMS" > "$TMP_DIR/SHA256SUMS.current"
+        (
+          cd "$TMP_DIR"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum -c SHA256SUMS.current >/dev/null
+          else
+            shasum -a 256 -c SHA256SUMS.current >/dev/null
+          fi
+        )
+      else
+        echo "[3/7] Checksum file not found; skipping verification."
+      fi
+    else
+      echo "Release asset not found for ${GH_REPO}@${RESOLVED_TAG}; will build from source."
+    fi
+  else
+    echo "No GitHub release found for ${GH_REPO}; will build from source."
+  fi
+
+  if [ "$DOWNLOADED_RELEASE" != "1" ]; then
+    if [ "$BUILD_FROM_SOURCE" = "0" ] || [ "$BUILD_FROM_SOURCE" = "false" ]; then
+      echo "Release download failed and BUILD_FROM_SOURCE is disabled." >&2
+      exit 1
+    fi
+    echo "[2/7] Building probe agent from source..."
+    build_agent_from_source
+  fi
 fi
 
 echo "[4/7] Removing old agent service..."
