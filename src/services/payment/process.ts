@@ -16,6 +16,11 @@ interface PaymentProcessTxnResult extends PaymentProcessResult {
   affectedNodeIds: string[];
 }
 
+const PAYMENT_PROVISION_TRANSACTION_OPTIONS = {
+  maxWait: 10_000,
+  timeout: 60_000,
+} as const;
+
 async function processOrderPaymentById(
   orderId: string,
   paymentRef?: string,
@@ -61,7 +66,7 @@ async function processOrderPaymentById(
         await issueInviteRewardForOrder({ ...order, status: "PAID" }, tx);
       }
       return { processed: true, finalStatus: "PAID", affectedNodeIds };
-    });
+    }, PAYMENT_PROVISION_TRANSACTION_OPTIONS);
 
     return {
       processed: result.processed,

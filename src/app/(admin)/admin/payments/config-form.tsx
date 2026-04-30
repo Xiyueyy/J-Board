@@ -59,8 +59,13 @@ export function PaymentConfigForm({
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const form = e.currentTarget;
     setSaving(true);
-    const formData = new FormData(e.currentTarget);
+    const formData = new FormData(form);
+    const secretInputs = fields
+      .filter((field) => field.secret)
+      .map((field) => form.elements.namedItem(field.key))
+      .filter((input): input is HTMLInputElement => input instanceof HTMLInputElement);
     const config: Record<string, string> = {};
     for (const field of fields) {
       if (field.type === "checkboxes") {
@@ -72,18 +77,15 @@ export function PaymentConfigForm({
 
     try {
       await savePaymentConfig(provider, config, enabled);
-      for (const field of fields) {
-        if (!field.secret) continue;
-        const input = e.currentTarget.elements.namedItem(field.key);
-        if (input instanceof HTMLInputElement) {
-          input.value = "";
-        }
+      for (const input of secretInputs) {
+        input.value = "";
       }
       toast.success("保存成功");
     } catch (error) {
       toast.error(getErrorMessage(error, "保存失败"));
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   return (
