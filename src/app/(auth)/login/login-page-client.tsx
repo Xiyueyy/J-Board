@@ -2,9 +2,9 @@
 
 import type { FormEvent } from "react";
 import Link from "next/link";
-import { signIn } from "next-auth/react";
+import { getCsrfToken, signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,9 +42,26 @@ export function LoginPageClient({
   );
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
+  const [oauthCsrfToken, setOauthCsrfToken] = useState("");
   const [turnstileToken, setTurnstileToken] = useState("");
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    if (!oauthEnabled) return;
+    let active = true;
+    void getCsrfToken()
+      .then((token) => {
+        if (active) setOauthCsrfToken(token ?? "");
+      })
+      .catch(() => {
+        if (active) setOauthCsrfToken("");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [oauthEnabled]);
+
+  async function onCredentialsSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (siteKey && !turnstileToken) {
       setError("请完成人机验证");
@@ -75,10 +92,20 @@ export function LoginPageClient({
     setOauthLoading(false);
   }
 
+  function onOAuthSubmit(event: FormEvent<HTMLFormElement>) {
+    setOauthLoading(true);
+    setError("");
+
+    if (!oauthCsrfToken) {
+      event.preventDefault();
+      void onOAuthLogin();
+    }
+  }
+
   return (
     <AuthShell>
       <AuthCard title="J-Board" description="登录你的 JB面板账户">
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={onCredentialsSubmit} className="space-y-4">
           <AuthErrorMessage message={error} />
           <div className="space-y-2">
             <Label htmlFor="email">邮箱</Label>
@@ -100,16 +127,19 @@ export function LoginPageClient({
               <span>或</span>
               <span className="h-px flex-1 bg-border" />
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              size="lg"
-              onClick={onOAuthLogin}
-              disabled={loading || oauthLoading}
-            >
-              {oauthLoading ? "跳转中..." : oauthButtonText || "使用 OAuth 登录"}
-            </Button>
+            <form method="post" action={`/api/auth/signin/${OAUTH_PROVIDER_ID}`} onSubmit={onOAuthSubmit}>
+              <input type="hidden" name="csrfToken" value={oauthCsrfToken} />
+              <input type="hidden" name="callbackUrl" value="/" />
+              <Button
+                type="submit"
+                variant="outline"
+                className="h-auto min-h-11 w-full touch-manipulation whitespace-normal py-2.5 text-center leading-snug"
+                size="lg"
+                disabled={loading || oauthLoading}
+              >
+                {oauthLoading ? "跳转中..." : oauthButtonText || "使用 OAuth 登录"}
+              </Button>
+            </form>
           </div>
         )}
         <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-sm text-muted-foreground">
