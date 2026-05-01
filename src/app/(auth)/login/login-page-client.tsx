@@ -11,10 +11,37 @@ import { Label } from "@/components/ui/label";
 import { TurnstileWidget } from "@/components/shared/turnstile-widget";
 import { AuthCard, AuthErrorMessage, AuthShell } from "../_components/auth-shell";
 
-export function LoginPageClient({ siteKey }: { siteKey?: string | null }) {
+const OAUTH_PROVIDER_ID = "custom-oauth";
+
+const oauthErrorMessages: Record<string, string> = {
+  OAuthEmailMissing: "OAuth 服务没有返回邮箱，无法绑定账户",
+  OAuthEmailUnverified: "OAuth 服务返回的邮箱未验证，无法绑定账户",
+  OAuthRegistrationDisabled: "该邮箱尚未注册，且当前站点未开放 OAuth 自动注册",
+  OAuthInviteRequired: "该邮箱尚未注册，当前站点要求邀请码，无法通过 OAuth 自动创建账户",
+  OAuthUserDisabled: "该账号已被禁用或封禁，无法登录",
+  AccessDenied: "OAuth 登录被拒绝，请确认邮箱已注册或站点允许自动注册",
+  OAuthSignin: "OAuth 登录初始化失败，请检查 OAuth 配置",
+  OAuthCallback: "OAuth 回调失败，请检查回调地址、Client ID 和 Client Secret",
+  OAuthCreateAccount: "OAuth 账户创建失败，请稍后重试",
+};
+
+export function LoginPageClient({
+  siteKey,
+  oauthEnabled,
+  oauthButtonText,
+  initialErrorCode,
+}: {
+  siteKey?: string | null;
+  oauthEnabled?: boolean;
+  oauthButtonText?: string | null;
+  initialErrorCode?: string | null;
+}) {
   const router = useRouter();
-  const [error, setError] = useState("");
+  const [error, setError] = useState(
+    initialErrorCode ? oauthErrorMessages[initialErrorCode] ?? "登录失败，请稍后重试" : "",
+  );
   const [loading, setLoading] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState("");
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -41,6 +68,13 @@ export function LoginPageClient({ siteKey }: { siteKey?: string | null }) {
     }
   }
 
+  async function onOAuthLogin() {
+    setOauthLoading(true);
+    setError("");
+    await signIn(OAUTH_PROVIDER_ID, { callbackUrl: "/" });
+    setOauthLoading(false);
+  }
+
   return (
     <AuthShell>
       <AuthCard title="J-Board" description="登录你的 JB面板账户">
@@ -55,10 +89,29 @@ export function LoginPageClient({ siteKey }: { siteKey?: string | null }) {
             <Input id="password" name="password" type="password" autoComplete="current-password" required />
           </div>
           <TurnstileWidget siteKey={siteKey} onSuccess={setTurnstileToken} />
-          <Button type="submit" className="w-full" size="lg" disabled={loading}>
+          <Button type="submit" className="w-full" size="lg" disabled={loading || oauthLoading}>
             {loading ? "登录中..." : "登录"}
           </Button>
         </form>
+        {oauthEnabled && (
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <span className="h-px flex-1 bg-border" />
+              <span>或</span>
+              <span className="h-px flex-1 bg-border" />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              size="lg"
+              onClick={onOAuthLogin}
+              disabled={loading || oauthLoading}
+            >
+              {oauthLoading ? "跳转中..." : oauthButtonText || "使用 OAuth 登录"}
+            </Button>
+          </div>
+        )}
         <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-sm text-muted-foreground">
           <Link href="/forgot-password" className="font-medium text-primary hover:underline">
             忘记密码

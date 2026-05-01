@@ -7,7 +7,21 @@ export const metadata: Metadata = {
   description: "登录 J-Board 账户并进入用户中心。",
 };
 
-export default async function LoginPage() {
+type LoginPageProps = {
+  searchParams?: Promise<{ error?: string | string[] }>;
+};
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
   const config = await getAppConfig();
-  return <LoginPageClient siteKey={config.turnstileSiteKey} />;
+  const params: { error?: string | string[] } = searchParams ? await searchParams : {};
+  const initialErrorCode = Array.isArray(params.error) ? params.error[0] : params.error;
+
+  return (
+    <LoginPageClient
+      siteKey={config.turnstileSiteKey}
+      oauthEnabled={config.oauthEnabled}
+      oauthButtonText={config.oauthButtonText}
+      initialErrorCode={initialErrorCode}
+    />
+  );
 }

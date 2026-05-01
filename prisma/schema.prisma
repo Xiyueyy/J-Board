@@ -849,6 +849,12 @@ model AppConfig {
   inviteRewardEnabled               Boolean  @default(false)
   turnstileSiteKey                  String?
   turnstileSecretKey                String?
+  oauthEnabled                      Boolean  @default(false)
+  oauthButtonText                   String?
+  oauthIssuer                       String?
+  oauthClientId                     String?
+  oauthClientSecret                 String?
+  oauthScopes                       String?  @default("openid email profile")
   smtpEnabled                       Boolean  @default(false)
   smtpHost                          String?
   smtpPort                          Int      @default(587)

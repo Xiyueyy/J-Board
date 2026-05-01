@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, ChevronDown, Clock3, Gift, LifeBuoy, Mail, Send, Settings2, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Bell, ChevronDown, Clock3, Gift, KeyRound, LifeBuoy, Mail, Send, Settings2, ShieldAlert, ShieldCheck } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,6 +47,12 @@ interface AppConfig {
   inviteRewardCouponId: string | null;
   turnstileSiteKey: string | null;
   turnstileSecretConfigured: boolean;
+  oauthEnabled: boolean;
+  oauthButtonText: string | null;
+  oauthIssuer: string | null;
+  oauthClientId: string | null;
+  oauthClientSecretConfigured: boolean;
+  oauthScopes: string | null;
   smtpEnabled: boolean;
   smtpHost: string | null;
   smtpPort: number;
@@ -63,12 +69,15 @@ interface CouponOption {
 }
 
 const selectClassName = "premium-input w-full appearance-none px-3.5 py-2 text-sm outline-none";
+const OAUTH_PROVIDER_ID = "custom-oauth";
 
 export function SettingsForm({ config, coupons }: { config: AppConfig; coupons: CouponOption[] }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [testingEmail, setTestingEmail] = useState(false);
   const [riskSettingsOpen, setRiskSettingsOpen] = useState(false);
+  const callbackBaseUrl = (config.siteUrl ?? "").replace(/\/+$/, "") || "https://你的面板域名";
+  const oauthCallbackUrl = `${callbackBaseUrl}/api/auth/callback/${OAUTH_PROVIDER_ID}`;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -132,6 +141,11 @@ export function SettingsForm({ config, coupons }: { config: AppConfig; coupons: 
     const turnstileSecret = form.elements.namedItem("turnstileSecretKey");
     if (turnstileSecret instanceof HTMLInputElement) {
       turnstileSecret.value = "";
+    }
+
+    const oauthClientSecret = form.elements.namedItem("oauthClientSecret");
+    if (oauthClientSecret instanceof HTMLInputElement) {
+      oauthClientSecret.value = "";
     }
   }
 
@@ -471,6 +485,65 @@ export function SettingsForm({ config, coupons }: { config: AppConfig; coupons: 
               <option value="true">开启，注册后必须验证邮箱</option>
             </select>
             <p className="text-xs leading-5 text-muted-foreground">开启后，新用户注册会先收到验证邮件，完成验证后才能登录；关闭后注册成功即可登录。</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-lg border border-border bg-muted/25 p-3">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <KeyRound className="size-4 text-primary" /> OAuth / Casdoor 登录
+        </div>
+        <p className="text-xs leading-5 text-muted-foreground">
+          支持标准 OIDC Discovery 的 OAuth 登录（例如 Casdoor）。已有用户会按邮箱自动绑定；不存在的邮箱只有在开放注册且未强制邀请码时才会自动创建。
+        </p>
+        <div className="grid gap-5 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="oauthEnabled">OAuth 登录</Label>
+            <select id="oauthEnabled" name="oauthEnabled" defaultValue={String(config.oauthEnabled)} className={selectClassName}>
+              <option value="false">关闭</option>
+              <option value="true">开启</option>
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="oauthButtonText">登录按钮文案</Label>
+            <Input id="oauthButtonText" name="oauthButtonText" defaultValue={config.oauthButtonText ?? ""} placeholder="使用 Casdoor 登录" />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="oauthIssuer">Issuer 地址</Label>
+            <Input id="oauthIssuer" name="oauthIssuer" defaultValue={config.oauthIssuer ?? ""} placeholder="https://casdoor.example.com" />
+            <p className="text-xs leading-5 text-muted-foreground">
+              系统会读取 <span className="font-mono">/.well-known/openid-configuration</span>。如果 Casdoor 部署在子路径，请把子路径也填进 Issuer。
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="oauthClientId">Client ID</Label>
+            <Input id="oauthClientId" name="oauthClientId" defaultValue={config.oauthClientId ?? ""} autoComplete="off" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="oauthClientSecret">Client Secret</Label>
+            <Input
+              id="oauthClientSecret"
+              name="oauthClientSecret"
+              type="password"
+              placeholder={config.oauthClientSecretConfigured ? "留空保持不变" : "请输入 Client Secret"}
+              autoComplete="new-password"
+            />
+            {config.oauthClientSecretConfigured && (
+              <p className="text-xs leading-5 text-muted-foreground">Client Secret 已加密保存；留空保持不变。</p>
+            )}
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="oauthScopes">Scopes</Label>
+            <Input id="oauthScopes" name="oauthScopes" defaultValue={config.oauthScopes ?? "openid email profile"} placeholder="openid email profile" />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label>回调地址</Label>
+            <div className="rounded-md border border-border bg-background px-3.5 py-2 font-mono text-xs break-all text-muted-foreground">
+              {oauthCallbackUrl}
+            </div>
+            <p className="text-xs leading-5 text-muted-foreground">
+              在 Casdoor / OAuth 应用里把这个地址加入 Redirect URI。修改网站 URL 后这里会自动跟着变。
+            </p>
           </div>
         </div>
       </section>

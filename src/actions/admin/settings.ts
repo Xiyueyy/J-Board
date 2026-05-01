@@ -48,6 +48,12 @@ const settingsSchema = z.object({
   inviteRewardCouponId: z.string().trim().optional(),
   turnstileSiteKey: z.string().trim().optional(),
   turnstileSecretKey: z.string().trim().optional(),
+  oauthEnabled: z.string().optional(),
+  oauthButtonText: z.string().trim().optional(),
+  oauthIssuer: z.string().trim().optional(),
+  oauthClientId: z.string().trim().optional(),
+  oauthClientSecret: z.string().optional(),
+  oauthScopes: z.string().trim().optional(),
   smtpEnabled: z.string().optional(),
   smtpHost: z.string().trim().optional(),
   smtpPort: z.coerce.number().int().min(1).max(65535).optional(),
@@ -96,6 +102,29 @@ function optionalBoolean(value: string | undefined, fallback: boolean) {
   return value == null ? fallback : value === "true";
 }
 
+function normalizeOauthIssuer(value: string | undefined) {
+  const raw = value?.trim();
+  if (!raw) return null;
+
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new Error("invalid protocol");
+    }
+    return url.toString().replace(/\/+$/, "");
+  } catch {
+    throw new Error("OAuth Issuer 地址格式不正确，请填写 http(s):// 开头的完整地址");
+  }
+}
+
+function encryptedOrExistingSecret(input: string | undefined, current: string | null) {
+  if (input?.trim()) {
+    return encrypt(input.trim());
+  }
+  if (!current) return null;
+  return isEncryptedValue(current) ? current : encrypt(current);
+}
+
 function buildSettingsUpdate(parsed: z.infer<typeof settingsSchema>, current: Awaited<ReturnType<typeof getAppConfig>>) {
   const smtpEnabled = optionalBoolean(parsed.smtpEnabled, current.smtpEnabled);
   const emailVerificationRequired = optionalBoolean(
@@ -105,6 +134,12 @@ function buildSettingsUpdate(parsed: z.infer<typeof settingsSchema>, current: Aw
   const smtpPassword = parsed.smtpPassword?.trim()
     ? encrypt(parsed.smtpPassword.trim())
     : current.smtpPassword;
+  const oauthEnabled = optionalBoolean(parsed.oauthEnabled, current.oauthEnabled);
+  const oauthIssuer = normalizeOauthIssuer(parsed.oauthIssuer);
+  const oauthClientSecret = encryptedOrExistingSecret(
+    parsed.oauthClientSecret,
+    current.oauthClientSecret,
+  );
   const turnstileSiteKey = parsed.turnstileSiteKey || null;
   const currentTurnstileSecret = current.turnstileSecretKey
     ? isEncryptedValue(current.turnstileSecretKey)
@@ -180,6 +215,12 @@ function buildSettingsUpdate(parsed: z.infer<typeof settingsSchema>, current: Aw
     inviteRewardCouponId: parsed.inviteRewardCouponId || null,
     turnstileSiteKey,
     turnstileSecretKey,
+    oauthEnabled,
+    oauthButtonText: parsed.oauthButtonText || null,
+    oauthIssuer,
+    oauthClientId: parsed.oauthClientId || null,
+    oauthClientSecret,
+    oauthScopes: parsed.oauthScopes || "openid email profile",
     smtpEnabled,
     smtpHost: parsed.smtpHost || null,
     smtpPort: parsed.smtpPort ?? current.smtpPort,
@@ -213,6 +254,12 @@ function buildSettingsUpdate(parsed: z.infer<typeof settingsSchema>, current: Aw
   }
   if (next.emailVerificationRequired && !next.smtpEnabled) {
     throw new Error("注册邮箱验证需要先开启 SMTP 邮件服务");
+  }
+
+  if (next.oauthEnabled) {
+    if (!next.oauthIssuer || !next.oauthClientId || !next.oauthClientSecret) {
+      throw new Error("启用 OAuth 登录前，请完整填写 Issuer、Client ID 和 Client Secret");
+    }
   }
 
   return next;
