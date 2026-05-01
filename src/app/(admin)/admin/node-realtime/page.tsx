@@ -23,13 +23,14 @@ export default async function NodeRealtimePage({
       <PageHeader
         eyebrow="基础设施"
         title="节点实时监控"
-        description="集中显示各节点整机上传/下载速度、在线用户、在线设备、来源 IP 和最近目标。"
+        description="集中显示各节点整机上传/下载速度、在线用户、活跃节点连接、来源 IP 和最近目标。"
         actions={(
           <div className="flex flex-wrap gap-2">
             <StatusBadge tone="neutral">节点 {overview.totalNodes}</StatusBadge>
             <StatusBadge tone="success">上报中 {overview.reportingNodes}</StatusBadge>
             <StatusBadge tone="info">在线用户 {overview.onlineUsers}</StatusBadge>
-            <StatusBadge tone="warning">在线设备 {overview.onlineDevices}</StatusBadge>
+            <StatusBadge tone="warning">活跃节点连接 {overview.activeNodeConnections}</StatusBadge>
+            <StatusBadge tone="neutral">来源 IP {overview.sourceIpCount}</StatusBadge>
             <NodesAutoRefresh intervalSeconds={3} />
           </div>
         )}

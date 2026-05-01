@@ -70,7 +70,7 @@ function OnlineUserItem({ user }: { user: NodeRealtimeUserRow }) {
           </div>
         </div>
         <span className="shrink-0 rounded-full border border-primary/15 bg-primary/5 px-2 py-0.5 text-[11px] font-medium text-primary">
-          {user.onlineDeviceCount || 1} 设备
+          {user.sourceIpCount || 1} 来源
         </span>
       </div>
       <div className="mt-2 grid gap-x-3 gap-y-1 text-[11px] leading-4 text-muted-foreground sm:grid-cols-2">
@@ -127,8 +127,8 @@ function NodeRealtimeCard({ node }: { node: NodeRealtimeRow }) {
           />
           <MetricPill
             icon={<MapPin className="size-3 shrink-0 text-amber-500" />}
-            label="在线设备"
-            value={`${node.onlineDeviceCount} 个`}
+            label="来源 IP"
+            value={`${node.sourceIpCount} 个`}
           />
         </div>
 
@@ -154,7 +154,7 @@ export function NodeRealtimeBoard({ nodes }: { nodes: NodeRealtimeRow[] }) {
       <EmptyState
         icon={<Activity className="size-5" />}
         title="暂无节点实时数据"
-        description="添加节点并运行新版 Agent 后，这里会显示整机上传下载速度和 3x-ui 在线用户。"
+        description="添加节点并运行新版 Agent 后，这里会显示整机上传下载速度、3x-ui 在线用户和来源 IP。"
       />
     );
   }

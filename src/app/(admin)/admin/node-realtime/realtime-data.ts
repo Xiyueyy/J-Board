@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
@@ -39,7 +40,7 @@ export interface NodeRealtimeUserRow {
   id: string;
   email: string;
   name: string | null;
-  onlineDeviceCount: number;
+  sourceIpCount: number;
   recentSourceIps: string[];
   recentTargetHosts: string[];
   recentInbounds: string[];
@@ -51,14 +52,15 @@ export interface NodeRealtimeRow extends NodeRealtimeBase {
   systemMetricHint: string;
   onlineUsers: NodeRealtimeUserRow[];
   onlineUserCount: number;
-  onlineDeviceCount: number;
+  sourceIpCount: number;
 }
 
 export interface NodeRealtimeOverview {
   totalNodes: number;
   reportingNodes: number;
   onlineUsers: number;
-  onlineDevices: number;
+  activeNodeConnections: number;
+  sourceIpCount: number;
 }
 
 interface OnlineAccumulator {
@@ -67,6 +69,7 @@ interface OnlineAccumulator {
   name: string | null;
   lastActiveAt: Date;
   sourceIps: Set<string>;
+  allSourceIps: Set<string>;
   targetHosts: Set<string>;
   inbounds: Set<string>;
   fallbackActivityCount: number;
@@ -86,6 +89,47 @@ function pushLimitedUnique(set: Set<string>, value: string | null | undefined, l
   const trimmed = value?.trim();
   if (!trimmed || set.has(trimmed) || set.size >= limit) return;
   set.add(trimmed);
+}
+
+function normalizeSourceIp(value: string | null | undefined) {
+  const trimmed = value?.trim().replace(/^\[|\]$/g, "").toLowerCase();
+  return trimmed && isIP(trimmed) !== 0 ? trimmed : null;
+}
+
+function ipv6Prefix64(ip: string) {
+  const normalized = ip.toLowerCase();
+  const head = normalized.split("::")[0]?.split(":").filter(Boolean).slice(0, 4).join(":");
+  return head || normalized;
+}
+
+function sourceIpGroupKeys(sourceIps: Iterable<string>) {
+  const ipv4s: string[] = [];
+  const ipv6s: string[] = [];
+
+  for (const sourceIp of sourceIps) {
+    const version = isIP(sourceIp);
+    if (version === 4) ipv4s.push(sourceIp);
+    if (version === 6) ipv6s.push(sourceIp);
+  }
+
+  const keys = new Set<string>();
+  for (const ip of ipv4s) keys.add(`v4:${ip}`);
+
+  if (ipv4s.length === 0) {
+    for (const ip of ipv6s) keys.add(`v6:${ipv6Prefix64(ip)}`);
+  }
+
+  return keys;
+}
+
+function sourceIpGroupCount(sourceIps: Iterable<string>) {
+  return sourceIpGroupKeys(sourceIps).size;
+}
+
+function addGlobalUserSourceKeys(target: Set<string>, userId: string, sourceIps: Iterable<string>) {
+  for (const key of sourceIpGroupKeys(sourceIps)) {
+    target.add(`${userId}:${key}`);
+  }
 }
 
 function getInboundDisplayName(inbound: { tag: string; settings: unknown } | null | undefined) {
@@ -129,6 +173,7 @@ function createAccumulator(client: RealtimeNodeClient, activeAt: Date): OnlineAc
     name: client.user.name,
     lastActiveAt: activeAt,
     sourceIps: new Set<string>(),
+    allSourceIps: new Set<string>(),
     targetHosts: new Set<string>(),
     inbounds: new Set<string>(),
     fallbackActivityCount: 0,
@@ -152,7 +197,9 @@ function addOnlineActivity(
 
   if (activeAt > user.lastActiveAt) user.lastActiveAt = activeAt;
   if (options.fallbackOnly) user.fallbackActivityCount += 1;
-  pushLimitedUnique(user.sourceIps, options.sourceIp);
+  const sourceIp = normalizeSourceIp(options.sourceIp);
+  if (sourceIp) user.allSourceIps.add(sourceIp);
+  pushLimitedUnique(user.sourceIps, sourceIp);
   pushLimitedUnique(user.targetHosts, options.targetHost);
   pushLimitedUnique(user.inbounds, options.inboundName ?? getInboundDisplayName(client.inbound));
 
@@ -165,7 +212,7 @@ function toOnlineUserRow(user: OnlineAccumulator): NodeRealtimeUserRow {
     id: user.id,
     email: user.email,
     name: user.name,
-    onlineDeviceCount: Math.max(user.sourceIps.size, user.fallbackActivityCount > 0 ? 1 : 0),
+    sourceIpCount: Math.max(sourceIpGroupCount(user.allSourceIps), user.fallbackActivityCount > 0 ? 1 : 0),
     recentSourceIps: Array.from(user.sourceIps),
     recentTargetHosts: Array.from(user.targetHosts),
     recentInbounds: Array.from(user.inbounds),
@@ -288,8 +335,35 @@ export async function getNodeRealtimePageData(
     });
   }
 
+  const globalUserIds = new Set<string>();
+  const globalSourceIpsByUserId = new Map<string, Set<string>>();
+  const globalFallbackUserIds = new Set<string>();
+
+  function addGlobalUserSourceIps(user: OnlineAccumulator) {
+    const sourceIps = globalSourceIpsByUserId.get(user.id) ?? new Set<string>();
+    for (const sourceIp of user.allSourceIps) {
+      sourceIps.add(sourceIp);
+    }
+    globalSourceIpsByUserId.set(user.id, sourceIps);
+    if (user.fallbackActivityCount > 0 && user.allSourceIps.size === 0) {
+      globalFallbackUserIds.add(user.id);
+    }
+  }
+
   const rows: NodeRealtimeRow[] = nodes.map((node) => {
-    const onlineUsers = Array.from(onlineByNodeId.get(node.id)?.values() ?? [])
+    const accumulators = Array.from(onlineByNodeId.get(node.id)?.values() ?? []);
+    const nodeSourceKeys = new Set<string>();
+
+    for (const user of accumulators) {
+      globalUserIds.add(user.id);
+      addGlobalUserSourceIps(user);
+      addGlobalUserSourceKeys(nodeSourceKeys, user.id, user.allSourceIps);
+      if (user.fallbackActivityCount > 0 && user.allSourceIps.size === 0) {
+        nodeSourceKeys.add(`${user.id}:fallback`);
+      }
+    }
+
+    const onlineUsers = accumulators
       .map(toOnlineUserRow)
       .sort((a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime());
 
@@ -299,15 +373,24 @@ export async function getNodeRealtimePageData(
       systemMetricHint: getSystemMetricHint(node.systemMetric, now),
       onlineUsers,
       onlineUserCount: onlineUsers.length,
-      onlineDeviceCount: onlineUsers.reduce((sum, user) => sum + user.onlineDeviceCount, 0),
+      sourceIpCount: nodeSourceKeys.size,
     };
   });
+
+  const globalSourceKeys = new Set<string>();
+  for (const [userId, sourceIps] of globalSourceIpsByUserId) {
+    addGlobalUserSourceKeys(globalSourceKeys, userId, sourceIps);
+    if (globalFallbackUserIds.has(userId) && sourceIps.size === 0) {
+      globalSourceKeys.add(`${userId}:fallback`);
+    }
+  }
 
   const overview: NodeRealtimeOverview = {
     totalNodes: rows.length,
     reportingNodes: rows.filter((node) => node.systemMetricFresh).length,
-    onlineUsers: rows.reduce((sum, node) => sum + node.onlineUserCount, 0),
-    onlineDevices: rows.reduce((sum, node) => sum + node.onlineDeviceCount, 0),
+    onlineUsers: globalUserIds.size,
+    activeNodeConnections: rows.reduce((sum, node) => sum + node.onlineUserCount, 0),
+    sourceIpCount: globalSourceKeys.size,
   };
 
   return {
