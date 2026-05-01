@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import type { Prisma, UserStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { parsePage } from "@/lib/utils";
@@ -31,8 +32,8 @@ type NodeClientWithNode = NonNullable<ActiveSubscription["nodeClient"]>;
 export interface OnlineUsersOverview {
   totalUsers: number;
   onlineUsers: number;
-  recentUsers: number;
-  activeUsers: number;
+  activeNodeConnections: number;
+  sourceIpCount: number;
 }
 
 export interface OnlineUserRow {
@@ -42,7 +43,8 @@ export interface OnlineUserRow {
   userStatus: UserStatus;
   onlineState: OnlineState;
   activeSubscriptionCount: number;
-  onlineSourceCount: number;
+  activeNodeConnectionCount: number;
+  sourceIpCount: number;
   recentSourceIps: string[];
   recentTargetHosts: string[];
   lastNodeName: string | null;
@@ -68,7 +70,12 @@ function parseReasonValue(reason: string | null | undefined, label: string) {
   return value || null;
 }
 
-function pushUniqueValue(map: Map<string, string[]>, key: string | null | undefined, value: string | null | undefined, limit = 5) {
+function pushUniqueValue(
+  map: Map<string, string[]>,
+  key: string | null | undefined,
+  value: string | null | undefined,
+  limit = 5,
+) {
   if (!key || !value) return;
   const trimmed = value.trim();
   if (!trimmed) return;
@@ -78,10 +85,81 @@ function pushUniqueValue(map: Map<string, string[]>, key: string | null | undefi
   map.set(key, values);
 }
 
-function getInboundDisplayName(inbound: { tag: string; settings: unknown } | null | undefined) {
+function normalizeSourceIp(value: string | null | undefined) {
+  const trimmed = value
+    ?.trim()
+    .replace(/^\[|\]$/g, "")
+    .toLowerCase();
+  return trimmed && isIP(trimmed) !== 0 ? trimmed : null;
+}
+
+function ipv6Prefix64(ip: string) {
+  const normalized = ip.toLowerCase();
+  const head = normalized
+    .split("::")[0]
+    ?.split(":")
+    .filter(Boolean)
+    .slice(0, 4)
+    .join(":");
+  return head || normalized;
+}
+
+function sourceIpGroupKeys(sourceIps: Iterable<string>) {
+  const ipv4s: string[] = [];
+  const ipv6s: string[] = [];
+
+  for (const sourceIp of sourceIps) {
+    const version = isIP(sourceIp);
+    if (version === 4) ipv4s.push(sourceIp);
+    if (version === 6) ipv6s.push(sourceIp);
+  }
+
+  const keys = new Set<string>();
+  for (const ip of ipv4s) keys.add(`v4:${ip}`);
+
+  if (ipv4s.length === 0) {
+    for (const ip of ipv6s) keys.add(`v6:${ipv6Prefix64(ip)}`);
+  }
+
+  return keys;
+}
+
+function sourceIpGroupCount(sourceIps: Iterable<string>) {
+  return sourceIpGroupKeys(sourceIps).size;
+}
+
+function addUserSourceKeys(
+  target: Set<string>,
+  userId: string,
+  sourceIps: Iterable<string>,
+) {
+  for (const key of sourceIpGroupKeys(sourceIps)) {
+    target.add(`${userId}:${key}`);
+  }
+}
+
+function addMapSetValue(
+  map: Map<string, Set<string>>,
+  key: string | null | undefined,
+  value: string | null | undefined,
+) {
+  if (!key || !value) return;
+  const values = map.get(key) ?? new Set<string>();
+  values.add(value);
+  map.set(key, values);
+}
+
+function getInboundDisplayName(
+  inbound: { tag: string; settings: unknown } | null | undefined,
+) {
   if (!inbound) return null;
   const settings = inbound.settings;
-  if (settings && typeof settings === "object" && !Array.isArray(settings) && "displayName" in settings) {
+  if (
+    settings &&
+    typeof settings === "object" &&
+    !Array.isArray(settings) &&
+    "displayName" in settings
+  ) {
     const value = (settings as { displayName?: unknown }).displayName;
     if (typeof value === "string" && value.trim()) return value.trim();
   }
@@ -96,7 +174,11 @@ function getNodeClientLabel(nodeClient: NodeClientWithNode | null | undefined) {
   };
 }
 
-function getOnlineState(user: UserWithSubscriptions, lastActiveAt: Date | null, now = new Date()): OnlineState {
+function getOnlineState(
+  user: UserWithSubscriptions,
+  lastActiveAt: Date | null,
+  now = new Date(),
+): OnlineState {
   if (user.status !== "ACTIVE") return "DISABLED";
   if (user.subscriptions.length === 0) return "INACTIVE";
   if (!lastActiveAt) return "IDLE";
@@ -130,9 +212,11 @@ function sumTrafficLimit(subscriptions: ActiveSubscription[]) {
 }
 
 function getMaxExpiry(subscriptions: ActiveSubscription[]) {
-  return subscriptions
-    .map((subscription) => subscription.endDate)
-    .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+  return (
+    subscriptions
+      .map((subscription) => subscription.endDate)
+      .sort((a, b) => b.getTime() - a.getTime())[0] ?? null
+  );
 }
 
 function paginate<T>(items: T[], page: number, pageSize: number) {
@@ -145,8 +229,10 @@ export async function getOnlineUsersPageData(
 ) {
   const { page, pageSize } = parsePage(searchParams);
   const q = typeof searchParams.q === "string" ? searchParams.q.trim() : "";
-  const online = typeof searchParams.online === "string" ? searchParams.online : "";
-  const status = typeof searchParams.status === "string" ? searchParams.status : "";
+  const online =
+    typeof searchParams.online === "string" ? searchParams.online : "";
+  const status =
+    typeof searchParams.status === "string" ? searchParams.status : "";
   const now = new Date();
   const onlineWindowStart = new Date(now.getTime() - ONLINE_WINDOW_MS);
 
@@ -179,14 +265,23 @@ export async function getOnlineUsersPageData(
 
   const userIds = users.map((user) => user.id);
   const activeSubscriptions = users.flatMap((user) => user.subscriptions);
-  const activeSubscriptionMap = new Map(activeSubscriptions.map((subscription) => [subscription.id, subscription]));
+  const activeSubscriptionMap = new Map(
+    activeSubscriptions.map((subscription) => [subscription.id, subscription]),
+  );
   const nodeClients = activeSubscriptions
     .map((subscription) => subscription.nodeClient)
     .filter((client): client is NodeClientWithNode => Boolean(client));
-  const nodeClientMap = new Map(nodeClients.map((client) => [client.id, client]));
+  const nodeClientMap = new Map(
+    nodeClients.map((client) => [client.id, client]),
+  );
   const clientIds = nodeClients.map((client) => client.id);
 
-  const [latestAccessLogs, latestTrafficLogs, monthlyTrafficGroups, recentAccessLogs] = await Promise.all([
+  const [
+    latestAccessLogs,
+    latestTrafficLogs,
+    monthlyTrafficGroups,
+    recentAccessLogs,
+  ] = await Promise.all([
     userIds.length
       ? prisma.subscriptionAccessLog.findMany({
           where: {
@@ -251,30 +346,49 @@ export async function getOnlineUsersPageData(
   const onlineSourceIpsByUserId = new Map<string, Set<string>>();
   const recentSourceIpListByUserId = new Map<string, string[]>();
   const recentTargetHostListByUserId = new Map<string, string[]>();
+  const activeNodeIdsByUserId = new Map<string, Set<string>>();
   for (const log of recentAccessLogs) {
     if (!log.userId) continue;
-    if (log.ip) {
-      const ips = onlineSourceIpsByUserId.get(log.userId) ?? new Set<string>();
-      ips.add(log.ip);
-      onlineSourceIpsByUserId.set(log.userId, ips);
-      pushUniqueValue(recentSourceIpListByUserId, log.userId, log.ip);
+    const sourceIp = normalizeSourceIp(log.ip);
+    if (sourceIp) {
+      addMapSetValue(onlineSourceIpsByUserId, log.userId, sourceIp);
+      pushUniqueValue(recentSourceIpListByUserId, log.userId, sourceIp);
     }
-    pushUniqueValue(recentTargetHostListByUserId, log.userId, parseReasonValue(log.reason, "样本目标"));
+    const nodeId =
+      parseReasonValue(log.reason, "节点") ??
+      (log.subscriptionId
+        ? activeSubscriptionMap.get(log.subscriptionId)?.nodeClient?.inbound
+            .serverId
+        : null) ??
+      null;
+    addMapSetValue(activeNodeIdsByUserId, log.userId, nodeId);
+    pushUniqueValue(
+      recentTargetHostListByUserId,
+      log.userId,
+      parseReasonValue(log.reason, "样本目标"),
+    );
   }
 
-  const onlineTrafficClientIdsByUserId = new Map<string, Set<string>>();
-  const latestTrafficByUserId = new Map<string, { timestamp: Date; client: NodeClientWithNode }>();
+  const latestTrafficByUserId = new Map<
+    string,
+    { timestamp: Date; client: NodeClientWithNode }
+  >();
   for (const log of latestTrafficLogs) {
     const client = nodeClientMap.get(log.clientId);
     if (!client) continue;
     if (log.timestamp >= onlineWindowStart) {
-      const clientIds = onlineTrafficClientIdsByUserId.get(client.userId) ?? new Set<string>();
-      clientIds.add(log.clientId);
-      onlineTrafficClientIdsByUserId.set(client.userId, clientIds);
+      addMapSetValue(
+        activeNodeIdsByUserId,
+        client.userId,
+        client.inbound.serverId,
+      );
     }
     const previous = latestTrafficByUserId.get(client.userId);
     if (!previous || log.timestamp > previous.timestamp) {
-      latestTrafficByUserId.set(client.userId, { timestamp: log.timestamp, client });
+      latestTrafficByUserId.set(client.userId, {
+        timestamp: log.timestamp,
+        client,
+      });
     }
   }
 
@@ -290,30 +404,37 @@ export async function getOnlineUsersPageData(
     const latestAccess = accessLogByUserId.get(user.id) ?? null;
     const latestTraffic = latestTrafficByUserId.get(user.id) ?? null;
     const accessSubscription = latestAccess?.subscriptionId
-      ? activeSubscriptionMap.get(latestAccess.subscriptionId) ?? null
+      ? (activeSubscriptionMap.get(latestAccess.subscriptionId) ?? null)
       : null;
 
-    const lastActiveAt = [latestAccess?.createdAt ?? null, latestTraffic?.timestamp ?? null]
-      .filter((date): date is Date => Boolean(date))
-      .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
-    const lastNodeClient = latestTraffic && (!latestAccess || latestTraffic.timestamp >= latestAccess.createdAt)
-      ? latestTraffic.client
-      : accessSubscription?.nodeClient ?? latestTraffic?.client ?? null;
+    const lastActiveAt =
+      [latestAccess?.createdAt ?? null, latestTraffic?.timestamp ?? null]
+        .filter((date): date is Date => Boolean(date))
+        .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+    const lastNodeClient =
+      latestTraffic &&
+      (!latestAccess || latestTraffic.timestamp >= latestAccess.createdAt)
+        ? latestTraffic.client
+        : (accessSubscription?.nodeClient ?? latestTraffic?.client ?? null);
     const { nodeName, inboundName } = getNodeClientLabel(lastNodeClient);
     const monthlyUsageBytes = user.subscriptions.reduce((sum, subscription) => {
       const clientId = subscription.nodeClient?.id;
-      return clientId ? sum + (monthlyUsageByClientId.get(clientId) ?? BigInt(0)) : sum;
+      return clientId
+        ? sum + (monthlyUsageByClientId.get(clientId) ?? BigInt(0))
+        : sum;
     }, BigInt(0));
 
-    const accessSourceCount = onlineSourceIpsByUserId.get(user.id)?.size ?? 0;
-    const onlineSourceCount = Math.max(
-      accessSourceCount,
-      onlineTrafficClientIdsByUserId.get(user.id)?.size ?? 0,
-      lastActiveAt && now.getTime() - lastActiveAt.getTime() <= ONLINE_WINDOW_MS ? 1 : 0,
-    );
-    const recentSourceIps = recentSourceIpListByUserId.get(user.id) ?? (latestAccess?.ip ? [latestAccess.ip] : []);
+    const sourceIps = onlineSourceIpsByUserId.get(user.id) ?? new Set<string>();
+    const sourceIpCount = sourceIpGroupCount(sourceIps);
+    const activeNodeConnectionCount =
+      activeNodeIdsByUserId.get(user.id)?.size ?? 0;
+    const recentSourceIps =
+      recentSourceIpListByUserId.get(user.id) ??
+      (latestAccess?.ip ? [latestAccess.ip] : []);
     const latestTargetHost = parseReasonValue(latestAccess?.reason, "样本目标");
-    const recentTargetHosts = recentTargetHostListByUserId.get(user.id) ?? (latestTargetHost ? [latestTargetHost] : []);
+    const recentTargetHosts =
+      recentTargetHostListByUserId.get(user.id) ??
+      (latestTargetHost ? [latestTargetHost] : []);
 
     return {
       id: user.id,
@@ -322,7 +443,8 @@ export async function getOnlineUsersPageData(
       userStatus: user.status,
       onlineState: getOnlineState(user, lastActiveAt, now),
       activeSubscriptionCount: user.subscriptions.length,
-      onlineSourceCount,
+      activeNodeConnectionCount,
+      sourceIpCount,
       recentSourceIps,
       recentTargetHosts,
       lastNodeName: nodeName,
@@ -358,11 +480,23 @@ export async function getOnlineUsersPageData(
     return (b.lastActiveAt?.getTime() ?? 0) - (a.lastActiveAt?.getTime() ?? 0);
   });
 
+  const globalSourceKeys = new Set<string>();
+  for (const row of rows) {
+    addUserSourceKeys(
+      globalSourceKeys,
+      row.id,
+      onlineSourceIpsByUserId.get(row.id) ?? [],
+    );
+  }
+
   const overview: OnlineUsersOverview = {
     totalUsers: rows.length,
     onlineUsers: rows.filter((row) => row.onlineState === "ONLINE").length,
-    recentUsers: rows.filter((row) => row.onlineState === "RECENT").length,
-    activeUsers: rows.filter((row) => row.activeSubscriptionCount > 0).length,
+    activeNodeConnections: rows.reduce(
+      (sum, row) => sum + row.activeNodeConnectionCount,
+      0,
+    ),
+    sourceIpCount: globalSourceKeys.size,
   };
 
   return {

@@ -9,7 +9,7 @@ import { getOnlineUsersPageData } from "./online-users-data";
 
 export const metadata: Metadata = {
   title: "在线用户",
-  description: "查看用户在线状态、在线设备、来源 IP、目标网站与流量用量。",
+  description: "查看用户在线状态、活跃节点连接、来源 IP 与流量用量。",
 };
 
 export default async function OnlineUsersPage({
@@ -24,12 +24,12 @@ export default async function OnlineUsersPage({
       <PageHeader
         eyebrow="用户支持"
         title="在线用户"
-        description="基于 Agent Xray access log 聚合显示用户在线设备、来源 IP、目标网站、最后连接节点和用量。"
+        description="基于 Agent Xray access log 聚合显示在线用户、活跃节点连接、来源 IP、目标网站、最后连接节点和用量。"
         actions={(
           <div className="flex flex-wrap gap-2">
-            <StatusBadge tone="success">在线 {overview.onlineUsers}</StatusBadge>
-            <StatusBadge tone="info">刚活跃 {overview.recentUsers}</StatusBadge>
-            <StatusBadge tone="neutral">活跃订阅用户 {overview.activeUsers}</StatusBadge>
+            <StatusBadge tone="success">在线用户 {overview.onlineUsers}</StatusBadge>
+            <StatusBadge tone="warning">活跃节点连接 {overview.activeNodeConnections}</StatusBadge>
+            <StatusBadge tone="neutral">来源 IP {overview.sourceIpCount}</StatusBadge>
             <OnlineUsersAutoRefresh intervalSeconds={5} />
           </div>
         )}

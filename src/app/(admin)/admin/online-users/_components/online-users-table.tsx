@@ -120,7 +120,7 @@ export function OnlineUsersTable({ users }: OnlineUsersTableProps) {
           <DataTableHeaderRow>
             <DataTableHeadCell>用户</DataTableHeadCell>
             <DataTableHeadCell>状态</DataTableHeadCell>
-            <DataTableHeadCell>在线设备</DataTableHeadCell>
+            <DataTableHeadCell>活跃节点连接</DataTableHeadCell>
             <DataTableHeadCell>来源 IP</DataTableHeadCell>
             <DataTableHeadCell>目标网站</DataTableHeadCell>
             <DataTableHeadCell>最后连接节点</DataTableHeadCell>
@@ -149,10 +149,10 @@ export function OnlineUsersTable({ users }: OnlineUsersTableProps) {
                 <OnlineStateBadge state={user.onlineState} />
               </DataTableCell>
               <DataTableCell className="tabular-nums">
-                {user.onlineSourceCount > 0 ? (
-                  <span className="inline-flex items-center gap-1.5" title="近 2 分钟不同来源 IP 数，按机场常用方式估算在线设备">
+                {user.activeNodeConnectionCount > 0 ? (
+                  <span className="inline-flex items-center gap-1.5" title="近 2 分钟内该用户触达的不同节点数，同一用户同一节点只算 1 次">
                     <Users className="size-3.5 text-muted-foreground" />
-                    {user.onlineSourceCount} 个
+                    {user.activeNodeConnectionCount} 个
                   </span>
                 ) : (
                   <span className="text-muted-foreground">—</span>
